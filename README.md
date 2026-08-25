@@ -1,0 +1,72 @@
+# Class Forge
+
+**Everything needed to start a BG3 class or subclass mod, in one folder you copy.**
+
+```bash
+py forge.py doctor      # is this machine set up at all
+py forge.py classes     # the real vanilla classes, read from YOUR game data
+py forge.py init        # a short interview -> forge.json
+py forge.py scaffold    # -> a complete, loadable mod tree
+```
+
+| File | What it is |
+|---|---|
+| `forge.py` | The generator. Produces a subclass that **loads** before any design exists. |
+| `FORGE.md` | The prompt. Hand it to an agent — the interview, the tool-build order, and 16 rules, each backed by something that actually went wrong. |
+| `forge_acceptance.py` | Controls. Most of them assert a **refusal**. |
+
+---
+
+## Why a generator and not just the prompt
+
+The prompt on its own was handed to one person. Their mod crashed their game constantly.
+
+The instructions were not wrong. They were instructions — and a first-timer hand-writes
+LSX, mistypes a UUID, lifts a GUID out of a tutorial, and the game dies at character
+creation with no message that means anything. The fastest way to stop that is to not let
+them hand-write the plumbing at all.
+
+So `scaffold` emits a subclass that already works: identity, class description, a
+progression table, one inert placeholder passive, and the localisation to name them. Six
+files. **Empty of design, complete of plumbing.** You get something in the game in the
+first session, and *then* you decide what the class does.
+
+## The thing it refuses to do
+
+**It never invents a UUID, and it never ships one you found somewhere.**
+
+- Every UUID it generates is fresh and recorded in `forge.json`, so nothing is copied and
+  nothing collides.
+- The one vanilla UUID it must reference — your parent class — is **read out of your own
+  unpacked game data**. Not a table in the source. Not memory. If the unpacked data is not
+  there, it **refuses to scaffold**.
+- And it re-checks that GUID against the game at scaffold time rather than trusting
+  `forge.json`, because a config can be hand-edited or copied between machines. A wrong
+  `ParentGuid` validates cleanly, packs cleanly, and crashes at character creation.
+
+That last refusal is the most valuable line in the tool. It is why `read_classes()` parses
+the game instead of carrying a list of GUIDs someone typed once — a list that would also
+rot the first time Larian shipped a class.
+
+Everything it writes is parsed as XML before it tells you it succeeded. A generator that
+emits a malformed file is worse than none, because the output arrives with a provenance
+story attached.
+
+## The order matters, and it is the actual lesson
+
+1. **Scaffold, pack, and load the game.** Confirm the subclass appears with real text and
+   not a raw handle — *before* writing content. Then when something breaks later, you know
+   the plumbing was fine.
+2. **Build the validator** (`FORGE.md` §3.2 and §3.2b). Sort its checks into *"will it
+   silently do nothing"* and *"will the game die."* Most people only ever build the first
+   column. That is how mods crash constantly.
+3. **Then design.** That is a conversation with your agent, not a thing a generator should
+   guess at.
+
+## What it does not do
+
+No design, no balance, no spells beyond the one placeholder. No packing — use Divine, or
+copy `build.ps1` from a working project. No icons.
+
+Adding those would mean choosing a class on the user's behalf, which is the one job here
+that isn't a tool's.
