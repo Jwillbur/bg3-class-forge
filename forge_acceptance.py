@@ -63,6 +63,23 @@ check("handles are unique too", len({F.new_handle() for _ in range(200)}), 200)
 check("version64 packs v1.0.0.0", F.version64(1, 0, 0, 0), 36028797018963968)
 check("version64 packs v1.8.0.0", F.version64(1, 8, 0, 0), 37154696925806592)
 
+print("\ntemplates carry no parser-eaten escapes:")
+# ⭐ THE FILE ON DISK IS NOT THE STRING PYTHON GETS. A Windows path inside a plain
+# triple-quoted template means the `\b` of `forge\build.ps1` is a BACKSPACE by the time
+# it is written out. The source reads perfectly, the repo-wide control-character scanner
+# sees nothing wrong with the file, and the GENERATED file is corrupt. That shipped once:
+# the build shim went looking for "forge<0x08>uild.ps1" and PowerShell answered "illegal
+# characters in path". The assertion has to run on the PARSED value, which is the only
+# place the damage is visible. Any template holding a backslash must be a raw string.
+_bad = {}
+for _n in dir(F):
+    _v = getattr(F, _n)
+    if _n.isupper() and isinstance(_v, str):
+        _ctl = [c for c in _v if ord(c) < 32 and c not in "\n\t"]
+        if _ctl:
+            _bad[_n] = "0x%02x" % ord(_ctl[0])
+check("no template contains a control character", _bad, {})
+
 print("\ntemplate filling:")
 check("a filled template keeps no placeholders",
       "{{" not in F.fill("<a>{{NAME}}</a>", {"name": "X"}))

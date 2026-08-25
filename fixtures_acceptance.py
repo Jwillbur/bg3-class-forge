@@ -185,7 +185,9 @@ check("[xml-malformed] the closing tag is the only thing missing",
       "</region>" not in t[PR] and "<region" in t[PR])
 
 # ---- the fixtures must not look like a shippable mod -----------------------------
-ROOT_FILES = {"forge.json", "DESIGN.md"}
+# Derived from the scaffold, not typed - this set has grown twice in one afternoon
+# (DESIGN.md, then build.ps1) and each time the literal was the thing that broke.
+ROOT_FILES = {"forge.json"} | {r for r, _ in _F.FILES if "/" not in r}
 check("fixtures are not mistakable for a real mod",
       all(NAME in k or "Localization" in k or k in ROOT_FILES for k in healthy),
       f"every GAME file must be namespaced under the fixture name; only {ROOT_FILES} "

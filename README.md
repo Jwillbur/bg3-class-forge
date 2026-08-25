@@ -17,6 +17,7 @@ py forge.py scaffold    # -> a complete, loadable mod tree
 | `modconfig.py` | Where a mod's files live, read from its `forge.json`. Every tool in the toolchain uses it, so there is one codebase rather than a copy per project. |
 | `fixtures/` | Nine mods broken on purpose, one defect each, plus the healthy control. **All nine are caught and the control stays clean** — measured, not assumed. |
 | `make_fixtures.py` | Regenerates them from the templates above, so they cannot drift into testing a mod shape nothing produces any more. |
+| `build.ps1` | The real build script for every mod made with this toolchain. Each mod gets a shim that finds it. |
 
 ---
 
@@ -93,10 +94,10 @@ that, here is the honest state.
 | **Spells** | ✅ Scaffolded. A spell that costs a resource, the resource itself, a spell list, a levelmap, and the progression rows that grant them. A freshly scaffolded mod passes the validator with **0 errors**. |
 | **Class icon** | ✅ Scaffolded, in all four real sizes, with a `.png` beside each for texconv. Deliberately crude — it is meant to look temporary. ⚠ Not yet confirmed in game. |
 | **Balance** | ✅ The interview asks the four questions a balance model needs — what this is the equivalent of, pool size, uses per turn, level range — and writes them into `forge.json` and a `DESIGN.md`. **Pricing them is still manual.** |
-| **Packing** | ❌ Still open. `doctor` finds Divine; the scaffold should then use it rather than point at it. |
+| **Packing** | ✅ `scaffold` writes a `build.ps1` that validates, compiles localisation, packs and deploys. It is a **shim** onto the forge's own build script, not a copy - a copy stops receiving fixes the moment it is made. |
 | **Spell icons** | Not a generator's job. Point at the closest vanilla icon and replace it with your own art later. |
 
-Packing is the one still outstanding.
+**All of it is done.** What is left is the part that was never a generator's job: pricing a feature against its comparison target, and art. Both are conversations, not commands.
 
 ## The one thing it should never do
 
