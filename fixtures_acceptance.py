@@ -185,10 +185,11 @@ check("[xml-malformed] the closing tag is the only thing missing",
       "</region>" not in t[PR] and "<region" in t[PR])
 
 # ---- the fixtures must not look like a shippable mod -----------------------------
+ROOT_FILES = {"forge.json", "DESIGN.md"}
 check("fixtures are not mistakable for a real mod",
-      all(NAME in k or "Localization" in k or k == "forge.json" for k in healthy),
-      "every game file is namespaced under the fixture name; forge.json is the "
-      "one root-level file, and it exists to make the fixture runnable")
+      all(NAME in k or "Localization" in k or k in ROOT_FILES for k in healthy),
+      f"every GAME file must be namespaced under the fixture name; only {ROOT_FILES} "
+      f"live at the root. Got: {sorted(healthy)}")
 check("the control's mod UUID is the documented deterministic one",
       "11111111" not in healthy[MT],
       "the namespace itself must not leak into output as a mod UUID")

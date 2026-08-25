@@ -101,6 +101,14 @@ def base_cfg(parent: str, parent_uuid: str) -> dict:
         "h_res_desc": det_handle("res_desc"),
         "h_spell_name": det_handle("spell_name"),
         "h_spell_desc": det_handle("spell_desc"),
+        # The balance answers, nested exactly as init writes them so `fill()` flattens
+        # them the same way. Refused to render without these too.
+        "balance": {
+            "compare_to": "Battle Master's Superiority Dice",
+            "pool_size": "4 to 6",
+            "uses_per_turn": "1",
+            "level_range": "3-12",
+        },
     }
 
 

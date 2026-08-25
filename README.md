@@ -14,7 +14,8 @@ py forge.py scaffold    # -> a complete, loadable mod tree
 | `forge.py` | The generator. Produces a subclass that **loads** before any design exists. |
 | `FORGE.md` | The prompt. Hand it to an agent — the interview, the tool-build order, and 16 rules, each backed by something that actually went wrong. |
 | `forge_acceptance.py` | Controls. Most of them assert a **refusal**. |
-| `fixtures/` | Nine mods broken on purpose, one defect each, plus the healthy control. The evidence any future checker gets tested against. |
+| `modconfig.py` | Where a mod's files live, read from its `forge.json`. Every tool in the toolchain uses it, so there is one codebase rather than a copy per project. |
+| `fixtures/` | Nine mods broken on purpose, one defect each, plus the healthy control. **All nine are caught and the control stays clean** — measured, not assumed. |
 | `make_fixtures.py` | Regenerates them from the templates above, so they cannot drift into testing a mod shape nothing produces any more. |
 
 ---
@@ -27,9 +28,11 @@ dies at character creation with no message that means anything. The fastest way 
 that is to not let them hand-write the plumbing at all.
 
 So `scaffold` emits a subclass that already works: identity, class description, a
-progression table, one inert placeholder passive, and the localisation to name them. Six
-files. **Empty of design, complete of plumbing.** You get something in the game in the
-first session, and *then* you decide what the class does.
+progression table, an inert placeholder passive, **a spendable resource with a spell that
+costs it**, a spell list, a levelmap, a placeholder class icon, the localisation to name
+it all, and a `DESIGN.md` holding the decisions you just made. **Empty of design, complete
+of plumbing.** You get something in the game in the first session, and *then* you decide
+what the class does.
 
 ## The thing it refuses to do
 
@@ -59,9 +62,9 @@ story attached.
    the plumbing was fine.
 2. **Build the validator** (`FORGE.md` §3.2 and §3.2b). Sort its checks into *"will it
    silently do nothing"* and *"will the game die."* Most people only ever build the first
-   column. That is how mods crash constantly. **Test it against `fixtures/`** — six of
-   those eight defects have no check yet, and that list is the fastest honest account of
-   what a validator here still owes you.
+   column. That is how mods crash constantly. **Test it against `fixtures/`** — nine mods
+   broken on purpose, one defect each. When that was first measured against a real
+   validator it caught five of the nine; the four it missed became four new checks.
 3. **Then design.** That is a conversation with your agent, not a thing a generator should
    guess at.
 
@@ -87,15 +90,13 @@ that, here is the honest state.
 
 | | Where it stands |
 |---|---|
-| **Packing** | The scaffold does not build a `.pak`. `doctor` finds Divine; it should then be used, not pointed at. |
-| **Spells** | Only a placeholder passive. **A spell with a resource cost is the same machinery as a class feature** — spell entries, action resources, spell lists, levelmaps — and none of it is scaffolded, so a caster starts from nothing. |
-| **Balance** | Nothing prices a feature against what it copies, even though §3.7 tells you to build exactly that. |
-| **Class icon** | Missing means a **blank entry on the class-select screen**. That is a plumbing failure, not an art one, so it belongs in the scaffold. |
-| **Spell icons** | Genuinely not a generator's job. Point at the closest vanilla icon and replace it with your own art later. |
+| **Spells** | ✅ Scaffolded. A spell that costs a resource, the resource itself, a spell list, a levelmap, and the progression rows that grant them. A freshly scaffolded mod passes the validator with **0 errors**. |
+| **Class icon** | ✅ Scaffolded, in all four real sizes, with a `.png` beside each for texconv. Deliberately crude — it is meant to look temporary. ⚠ Not yet confirmed in game. |
+| **Balance** | ✅ The interview asks the four questions a balance model needs — what this is the equivalent of, pool size, uses per turn, level range — and writes them into `forge.json` and a `DESIGN.md`. **Pricing them is still manual.** |
+| **Packing** | ❌ Still open. `doctor` finds Divine; the scaffold should then use it rather than point at it. |
+| **Spell icons** | Not a generator's job. Point at the closest vanilla icon and replace it with your own art later. |
 
-The order they land in: tools first (so packing, balance and validation all arrive
-together), then the scaffold grows to cover spells and a placeholder class icon, then the
-interview grows the questions that drive balance.
+Packing is the one still outstanding.
 
 ## The one thing it should never do
 
