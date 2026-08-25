@@ -75,10 +75,29 @@ to stay open under the same terms, carry a note saying you changed it, and keep 
 copyright notice — so the trail back to the original stays attached. `LICENSE` is the
 full text.
 
-## What it does not do
+## Not yet — and these are gaps, not principles
 
-No design, no balance, no spells beyond the one placeholder. No packing — use Divine, or
-copy `build.ps1` from a working project. No icons.
+An earlier version of this file listed the following as things the forge deliberately
+*doesn't* do. That was wrong, and worth correcting rather than quietly deleting: they are
+things it does not do **yet**, and calling a limitation a design decision is how a tool
+stops improving.
 
-Adding those would mean choosing a class on the user's behalf, which is the one job here
-that isn't a tool's.
+The goal is a class mod built with as little manual plumbing as possible. Measured against
+that, here is the honest state.
+
+| | Where it stands |
+|---|---|
+| **Packing** | The scaffold does not build a `.pak`. `doctor` finds Divine; it should then be used, not pointed at. |
+| **Spells** | Only a placeholder passive. **A spell with a resource cost is the same machinery as a class feature** — spell entries, action resources, spell lists, levelmaps — and none of it is scaffolded, so a caster starts from nothing. |
+| **Balance** | Nothing prices a feature against what it copies, even though §3.7 tells you to build exactly that. |
+| **Class icon** | Missing means a **blank entry on the class-select screen**. That is a plumbing failure, not an art one, so it belongs in the scaffold. |
+| **Spell icons** | Genuinely not a generator's job. Point at the closest vanilla icon and replace it with your own art later. |
+
+The order they land in: tools first (so packing, balance and validation all arrive
+together), then the scaffold grows to cover spells and a placeholder class icon, then the
+interview grows the questions that drive balance.
+
+## The one thing it should never do
+
+**Decide what the class is.** A generator that guesses at a concept produces a class nobody
+chose. Automate the execution completely; the design stays a conversation.
