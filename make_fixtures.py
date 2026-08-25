@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Generate the deliberately-broken mods in fixtures/. Run rarely; commit the output.
 
     py make_fixtures.py            # regenerate fixtures/ from forge.py's own templates

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Controls for the broken-mod fixtures.
 
 The fixtures are test data for checkers that mostly DO NOT EXIST YET, so this harness

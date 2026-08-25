@@ -65,6 +65,16 @@ story attached.
 3. **Then design.** That is a conversation with your agent, not a thing a generator should
    guess at.
 
+## License
+
+**GPL-3.0-or-later.** Use it, change it, build your class with it — that is what it is for,
+and nothing you MAKE with it is covered: your mod is yours.
+
+The licence bites only if you distribute a modified version of **this tool**. Then it has
+to stay open under the same terms, carry a note saying you changed it, and keep the
+copyright notice — so the trail back to the original stays attached. `LICENSE` is the
+full text.
+
 ## What it does not do
 
 No design, no balance, no spells beyond the one placeholder. No packing — use Divine, or

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Acceptance harness for forge.py.
 
 The value of this tool is almost entirely in WHAT IT REFUSES TO DO. A generator that
