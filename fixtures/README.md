@@ -41,9 +41,18 @@ checker at all, because it teaches you to skim past its output.
 chasing a crash at the difficulty screen. An invented attribute name is well-formed XML with a
 plausible value, so every check we had walked straight past it.
 
-Seven of the nine name a check that **does not exist yet**. That is the honest state, and
-writing it down is the point — the manifest is a to-do list for the validator, expressed
-as evidence rather than as a wish.
+**All nine are now caught, and the control stays clean.** That was not the plan — it is
+what the measurement produced. Pointing the real `validate.py` at each fixture showed it
+already caught **five** of the nine; the manifest's own estimate had said two. Four checks
+were then written against the four it missed (17-20). `bg3/Warpblade/tools/fixture_matrix_acceptance.py`
+runs that matrix on every self-test, and asserts not just that each defect is caught but
+that it is caught **by the right check** — an exit code alone cannot tell you whether the
+check you meant to test fired or something incidental tripped first.
+
+The first run also found a bug in the validator rather than in a fixture: it crashed with
+an unhandled `FileNotFoundError` on a mod with no `Levelmaps` file, because it had only
+ever run against one mod that happened to have every optional file. A traceback tells
+someone whose mod is fine that the *tool* is broken.
 
 ## Three rules they follow
 

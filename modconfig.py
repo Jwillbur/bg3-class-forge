@@ -121,7 +121,23 @@ class ModConfig:
 
 
 def find(start: Path | None = None, filename: str = "forge.json") -> Path:
-    """The nearest forge.json at or above `start`. Raises rather than returning None."""
+    """The nearest forge.json at or above `start`. Raises rather than returning None.
+
+    ⭐ `FORGE_CONFIG` overrides the search entirely, and that is what lets a tool be
+    pointed at a DIFFERENT mod than the one it lives beside. Without it every tool here
+    could only ever validate its own project - which is most of the value of a generic
+    toolchain missing. It is an env var rather than a flag because the config loads at
+    import time, before any argument parsing could have run.
+    """
+    override = os.environ.get("FORGE_CONFIG")
+    if override:
+        p = Path(override)
+        if p.is_dir():
+            p = p / filename
+        if not p.is_file():
+            raise ConfigError(f"FORGE_CONFIG points at {p}, which does not exist.")
+        return p
+
     here = (start or Path.cwd()).resolve()
     if here.is_file():
         here = here.parent

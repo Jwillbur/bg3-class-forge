@@ -32,7 +32,7 @@
       "breaks": "Progressions grants FixtureBlade_NoSuchPassive, which no stats file defines.",
       "symptom": "CRASH AT LEVEL-UP - after the player has already committed to the choice, which is what makes this one worse than it looks.",
       "severity": "crash",
-      "expect": "NOT YET IMPLEMENTED - every name in PassivesAdded resolves to a stats entry",
+      "expect": "CAUGHT by validate.py check 6 - every name in PassivesAdded resolves to a stats entry",
       "still_parses_as_xml": true
     },
     {
@@ -40,7 +40,7 @@
       "breaks": "ClassDescriptions.ProgressionTableUUID does not equal Progressions.TableUUID.",
       "symptom": "The subclass silently does not appear. No error anywhere.",
       "severity": "silent",
-      "expect": "NOT YET IMPLEMENTED - the two UUIDs agree. forge.py's template WARNS about this in a comment; a comment is not a check",
+      "expect": "CAUGHT by validate.py check 10 - the two UUIDs agree. forge.py's template WARNS about this in a comment; a comment is not a check",
       "still_parses_as_xml": true
     },
     {
@@ -48,7 +48,7 @@
       "breaks": "ParentGuid is a well-formed GUID that matches no class in the game data.",
       "symptom": "Crash or empty subclass list at character creation.",
       "severity": "crash",
-      "expect": "NOT YET IMPLEMENTED - ParentGuid resolves against real game data. A shape check cannot see this: the value is a perfectly valid GUID",
+      "expect": "CAUGHT by validate.py check 17 (written because this fixture proved nothing caught it) - ParentGuid resolves against real game data. A shape check cannot see this: the value is a perfectly valid GUID",
       "still_parses_as_xml": true
     },
     {
@@ -56,7 +56,7 @@
       "breaks": "The feature's DisplayName handle has no entry in the localisation file.",
       "symptom": "The raw handle string shows in the UI instead of a name.",
       "severity": "silent",
-      "expect": "NOT YET IMPLEMENTED - every handle referenced has loca content",
+      "expect": "CAUGHT by validate.py check 8 - every handle referenced has loca content",
       "still_parses_as_xml": true
     },
     {
@@ -64,7 +64,7 @@
       "breaks": "The Progression node reuses the ClassDescription's UUID.",
       "symptom": "Undefined - one record shadows the other, and which one wins is not stable.",
       "severity": "silent",
-      "expect": "NOT YET IMPLEMENTED - no UUID appears twice in the mod",
+      "expect": "CAUGHT by validate.py check 18 (written because this fixture proved nothing caught it) - no UUID appears twice in the mod",
       "still_parses_as_xml": true
     },
     {
@@ -72,7 +72,7 @@
       "breaks": "meta.lsx says StartupLevelName as `StartLevelName` - a field name that exists in no vanilla meta.lsx.",
       "symptom": "Crash BEFORE character creation - at New Game / the difficulty screen, where the campaign is loaded.",
       "severity": "crash",
-      "expect": "NOT YET IMPLEMENTED - every ModuleInfo attribute name appears in vanilla meta.lsx. Derive the legal set from the game data rather than typing it out",
+      "expect": "CAUGHT by validate.py check 19 (written because this fixture proved nothing caught it) - every ModuleInfo attribute name appears in vanilla meta.lsx. Derive the legal set from the game data rather than typing it out",
       "still_parses_as_xml": true
     },
     {
@@ -80,7 +80,7 @@
       "breaks": "meta.lsx declares a dependency on a module that is not installed.",
       "symptom": "The mod is skipped, or the load order refuses to launch.",
       "severity": "crash",
-      "expect": "NOT YET IMPLEMENTED - declared dependencies exist",
+      "expect": "CAUGHT by validate.py check 20 (written because this fixture proved nothing caught it) - declared dependencies exist",
       "still_parses_as_xml": true
     }
   ]

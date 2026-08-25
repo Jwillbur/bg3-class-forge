@@ -77,7 +77,11 @@ check("exactly one control", sum(1 for f in man["fixtures"]
                                  if f["severity"] == "control") == 1)
 
 healthy = files_of("healthy")
-check("healthy carries all six generated files", len(healthy) == 6, str(sorted(healthy)))
+check("healthy carries the generated files plus its forge.json",
+      len(healthy) == 7 and "forge.json" in healthy, str(sorted(healthy)))
+check("the forge.json is what makes a fixture runnable",
+      '"name": "FixtureBlade"' in healthy["forge.json"],
+      "without it the real validate.py cannot be pointed at a fixture at all")
 
 # ---- structural sanity across every fixture ------------------------------------
 for fid in sorted(listed):
@@ -176,8 +180,9 @@ check("[xml-malformed] the closing tag is the only thing missing",
 
 # ---- the fixtures must not look like a shippable mod -----------------------------
 check("fixtures are not mistakable for a real mod",
-      all(NAME in k or "Localization" in k for k in healthy),
-      "everything is namespaced under the fixture name")
+      all(NAME in k or "Localization" in k or k == "forge.json" for k in healthy),
+      "every game file is namespaced under the fixture name; forge.json is the "
+      "one root-level file, and it exists to make the fixture runnable")
 check("the control's mod UUID is the documented deterministic one",
       "11111111" not in healthy[MT],
       "the namespace itself must not leak into output as a mod UUID")

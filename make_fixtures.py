@@ -89,8 +89,24 @@ def base_cfg(parent: str, parent_uuid: str) -> dict:
 
 
 def render(cfg: dict) -> dict[str, str]:
-    """The healthy tree: exactly what `forge.py scaffold` writes, as {relpath: text}."""
-    return {F.fill(rel, cfg): F.fill(tpl, cfg) for rel, tpl in F.FILES}
+    """The healthy tree: `forge.py scaffold` output, plus the forge.json that locates it.
+
+    ⭐ The forge.json is what makes a fixture RUNNABLE. Since the toolchain reads a mod's
+    layout from that file, a fixture carrying one can be handed to the real `validate.py`
+    exactly like a real mod - which turns "we think the validator catches this" into a
+    measurement. That is the whole point of the fixtures, and it only became possible when
+    the tools stopped hardcoding their paths.
+    """
+    tree = {F.fill(rel, cfg): F.fill(tpl, cfg) for rel, tpl in F.FILES}
+    tree["forge.json"] = json.dumps({
+        "_readme": "Fixture. Deliberately broken test data - see ../manifest.json.",
+        "name": cfg["name"],
+        "language": "English",
+        "parent": cfg["parent"],
+        "parent_uuid": cfg["parent_uuid"],
+        "mod_uuid": cfg["mod_uuid"],
+    }, indent=2) + "\n"
+    return tree
 
 
 # --------------------------------------------------------------- mutations ----
@@ -212,33 +228,33 @@ FIXTURES = [
      "CRASH AT LEVEL-UP - after the player has already committed to the choice, which "
      "is what makes this one worse than it looks.",
      "crash",
-     "NOT YET IMPLEMENTED - every name in PassivesAdded resolves to a stats entry"),
+     "CAUGHT by validate.py check 6 - every name in PassivesAdded resolves to a stats entry"),
 
     ("table-uuid-mismatch", m_table_uuid_mismatch,
      "ClassDescriptions.ProgressionTableUUID does not equal Progressions.TableUUID.",
      "The subclass silently does not appear. No error anywhere.",
      "silent",
-     "NOT YET IMPLEMENTED - the two UUIDs agree. forge.py's template WARNS about this "
+     "CAUGHT by validate.py check 10 - the two UUIDs agree. forge.py's template WARNS about this "
      "in a comment; a comment is not a check"),
 
     ("unresolvable-parent", m_unresolvable_parent,
      "ParentGuid is a well-formed GUID that matches no class in the game data.",
      "Crash or empty subclass list at character creation.",
      "crash",
-     "NOT YET IMPLEMENTED - ParentGuid resolves against real game data. A shape check "
+     "CAUGHT by validate.py check 17 (written because this fixture proved nothing caught it) - ParentGuid resolves against real game data. A shape check "
      "cannot see this: the value is a perfectly valid GUID"),
 
     ("missing-loca-handle", m_missing_loca_handle,
      "The feature's DisplayName handle has no entry in the localisation file.",
      "The raw handle string shows in the UI instead of a name.",
      "silent",
-     "NOT YET IMPLEMENTED - every handle referenced has loca content"),
+     "CAUGHT by validate.py check 8 - every handle referenced has loca content"),
 
     ("duplicate-uuid", m_duplicate_uuid,
      "The Progression node reuses the ClassDescription's UUID.",
      "Undefined - one record shadows the other, and which one wins is not stable.",
      "silent",
-     "NOT YET IMPLEMENTED - no UUID appears twice in the mod"),
+     "CAUGHT by validate.py check 18 (written because this fixture proved nothing caught it) - no UUID appears twice in the mod"),
 
     ("meta-invented-field", m_meta_invented_field,
      "meta.lsx says StartupLevelName as `StartLevelName` - a field name that exists in "
@@ -246,14 +262,14 @@ FIXTURES = [
      "Crash BEFORE character creation - at New Game / the difficulty screen, where the "
      "campaign is loaded.",
      "crash",
-     "NOT YET IMPLEMENTED - every ModuleInfo attribute name appears in vanilla meta.lsx. "
+     "CAUGHT by validate.py check 19 (written because this fixture proved nothing caught it) - every ModuleInfo attribute name appears in vanilla meta.lsx. "
      "Derive the legal set from the game data rather than typing it out"),
 
     ("dependency-absent", m_dependency_absent,
      "meta.lsx declares a dependency on a module that is not installed.",
      "The mod is skipped, or the load order refuses to launch.",
      "crash",
-     "NOT YET IMPLEMENTED - declared dependencies exist"),
+     "CAUGHT by validate.py check 20 (written because this fixture proved nothing caught it) - declared dependencies exist"),
 ]
 
 

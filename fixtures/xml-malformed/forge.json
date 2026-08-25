@@ -1,0 +1,8 @@
+{
+  "_readme": "Fixture. Deliberately broken test data - see ../manifest.json.",
+  "name": "FixtureBlade",
+  "language": "English",
+  "parent": "Fighter",
+  "parent_uuid": "721dfac3-92d4-41f5-b773-b7072a86232f",
+  "mod_uuid": "4f7543ba-ce68-5025-a4fc-82aeae6c9636"
+}
