@@ -21,12 +21,10 @@ py forge.py scaffold    # -> a complete, loadable mod tree
 
 ## Why a generator and not just the prompt
 
-The prompt on its own was handed to one person. Their mod crashed their game constantly.
-
-The instructions were not wrong. They were instructions — and a first-timer hand-writes
-LSX, mistypes a UUID, lifts a GUID out of a tutorial, and the game dies at character
-creation with no message that means anything. The fastest way to stop that is to not let
-them hand-write the plumbing at all.
+However good a set of instructions is, it is still a set of instructions — and a
+first-timer hand-writes LSX, mistypes a UUID, lifts a GUID out of a tutorial, and the game
+dies at character creation with no message that means anything. The fastest way to stop
+that is to not let them hand-write the plumbing at all.
 
 So `scaffold` emits a subclass that already works: identity, class description, a
 progression table, one inert placeholder passive, and the localisation to name them. Six

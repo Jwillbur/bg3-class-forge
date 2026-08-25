@@ -7,10 +7,10 @@
     py forge.py scaffold               # forge.json -> a complete, loadable mod tree
 
 ⭐ WHY THIS EXISTS RATHER THAN MORE INSTRUCTIONS
-    The prose version of this framework was handed to one person and their mod crashed
-    their game constantly. The instructions were not wrong; they were instructions. A
-    first-timer hand-writes LSX, mistypes a UUID, copies a GUID out of a tutorial, and
-    the game dies at level-up with no message that means anything.
+    This framework started as prose, and prose has a ceiling: however good the
+    instructions, they are still instructions. A first-timer hand-writes LSX, mistypes a
+    UUID, copies a GUID out of a tutorial, and the game dies at level-up with no message
+    that means anything.
 
     So this generates a mod that already loads. Empty of design, complete of plumbing:
     identity, class description, a progression table, one placeholder feature, and the
