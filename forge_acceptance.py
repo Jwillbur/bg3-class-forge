@@ -118,7 +118,30 @@ else:
     check("a healthy config scaffolds", F.scaffold(a), 0)
     made = sorted(p.relative_to(Path(a.out)).as_posix()
                   for p in Path(a.out).rglob("*") if p.is_file())
-    check("it writes the six files a subclass needs", len(made), 6)
+    # Count derived from FILES, not typed. A literal here is the "Eleven checks" bug in
+    # miniature: it went stale the moment the scaffold grew a spell chain, and a test
+    # that fails when the code correctly changes is a test people learn to edit rather
+    # than read.
+    # Split the count: templated game files vs the generated placeholder icon. Lumping
+    # them made this assert fail the moment the icon writer landed, which is a test
+    # objecting to correct work - the thing that teaches people to edit tests instead of
+    # reading them.
+    templated = [m for m in made if "/GUI/" not in m]
+    check("it writes every file FILES declares", len(templated), len(F.FILES))
+    check("and that includes the whole spell chain",
+          all(any(k in m for m in templated) for k in
+              ("ActionResourceDefinitions", "SpellLists", "Spell_Target", "Levelmaps")),
+          True)
+    # ⭐ A missing class icon is a BLANK entry at character creation - a plumbing failure,
+    # not an art one, which is why a generator that ships no design still ships this.
+    icons = sorted(m for m in made if m.endswith(".DDS"))
+    check("a placeholder class icon is written in all four sizes", len(icons), 4)
+    check("...at the paths a working mod actually uses",
+          all(any(p in m for m in icons) for p in
+              ("Assets/ClassIcons/", "Assets/ClassIcons/hotbar/",
+               "AssetsLowRes/ClassIcons/", "AssetsLowRes/ClassIcons/hotbar/")), True)
+    check("...and a .png beside each, for texconv or hand-editing",
+          len([m for m in made if m.endswith(".png")]), 4)
     check("every generated .lsx/.xml is well-formed XML",
           all(ET.parse(p) is not None for p in Path(a.out).rglob("*")
               if p.suffix.lower() in (".lsx", ".xml")))

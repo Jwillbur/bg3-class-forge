@@ -29,9 +29,10 @@
     that means anything.
 
     So this generates a mod that already loads. Empty of design, complete of plumbing:
-    identity, class description, a progression table, one placeholder feature, and the
-    localisation to name them. You get something in the game in the first session, and
-    THEN you design.
+    identity, class description, a progression table, one placeholder feature, a
+    spendable RESOURCE with a placeholder SPELL that costs it, a spell list, a levelmap,
+    and the localisation to name them all. You get something in the game in the first
+    session, and THEN you design.
 
 ⚠ THE RULE THIS TOOL ENFORCES, AND THE REASON IT CAN REFUSE TO RUN
     **It never invents a UUID and never ships one you found somewhere.**
@@ -46,13 +47,16 @@
     That refusal is the feature. Read `doctor` before complaining about it.
 
 WHAT IT DELIBERATELY DOES NOT DO
-    No design. No balance. No spells beyond one placeholder passive that proves the chain
-    end to end. Those are conversations to have with the agent, and a generator that
-    guessed at them would produce a class nobody chose.
+    It does not decide WHAT THE CLASS IS. Every generated feature and spell is
+    deliberately dull - correct plumbing, no design - because a generator that guessed at
+    a concept would produce a class nobody chose. Scaffold a mechanically VALID spell,
+    never a balanced one: whether it is worth its cost is a conversation with the agent,
+    and a thing the balance tools price.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -289,6 +293,13 @@ PROGRESSIONS = """<?xml version="1.0" encoding="utf-8"?>
                     <attribute id="Level" type="uint8" value="{{FIRST_LEVEL}}"/>
                     <attribute id="Name" type="LSString" value="{{NAME}}"/>
                     <attribute id="PassivesAdded" type="LSString" value="{{FEATURE_ID}}"/>
+                    <!-- Grants the pool. Without this row the resource EXISTS and the
+                         player has none of it, so every spell that costs it is greyed
+                         out with no explanation. -->
+                    <attribute id="Boosts" type="LSString" value="ActionResource({{RESOURCE_ID}},2,0)"/>
+                    <!-- Grants the spell list. The UUID is the SpellList's, not a
+                         spell's - `AddSpells(<uuid>)` is the form vanilla uses. -->
+                    <attribute id="Selectors" type="LSString" value="AddSpells({{SPELLLIST_UUID}})"/>
                     <attribute id="ProgressionType" type="uint8" value="1"/>
                     <attribute id="TableUUID" type="guid" value="{{TABLE_UUID}}"/>
                     <attribute id="UUID" type="guid" value="{{PROG_UUID}}"/>
@@ -340,8 +351,200 @@ LOCA = """<?xml version="1.0" encoding="utf-8"?>
   <content contentuid="{{H_DESC}}" version="1">{{DESCRIPTION}}</content>
   <content contentuid="{{H_FEAT_NAME}}" version="1">{{FEATURE_NAME}}</content>
   <content contentuid="{{H_FEAT_DESC}}" version="1">Placeholder. Replace this description once the feature does something.</content>
+  <content contentuid="{{H_RES_NAME}}" version="1">{{RESOURCE_NAME}}</content>
+  <content contentuid="{{H_RES_DESC}}" version="1">A pool of {{RESOURCE_NAME}}, spent by {{NAME}} abilities and restored on a short rest.</content>
+  <content contentuid="{{H_SPELL_NAME}}" version="1">{{SPELL_NAME}}</content>
+  <content contentuid="{{H_SPELL_DESC}}" version="1">Placeholder. A weapon attack that spends one {{RESOURCE_NAME}}. Replace this once the spell does something worth describing.</content>
 </contentList>
 """
+
+# ⭐ EVERYTHING BELOW WAS READ OUT OF SHIPPED GAME DATA, NOT REMEMBERED.
+# The SpellList node's three attributes and the `AddSpells(<uuid>)` selector form were
+# both taken from GustavX's own Lists/SpellLists.lsx and Progressions.lsx. That matters
+# because a scaffold that emits a plausible-but-wrong shape is worse than none: it looks
+# authoritative and fails silently.
+
+ACTIONRESOURCE = """<?xml version="1.0" encoding="UTF-8"?>
+<save>
+    <version major="4" minor="3" revision="0" build="333"/>
+    <region id="ActionResourceDefinitions">
+        <node id="root">
+            <children>
+                <!-- {{RESOURCE_NAME}} - the pool your class spends.
+                     Granted in Progressions.lsx as: ActionResource({{RESOURCE_ID}},n,0)
+                     Spent in SpellData as:          UseCosts "{{RESOURCE_ID}}:1"
+
+                     ⚠ ShowOnActionResourcePanel MUST be true or the player never sees
+                     the pool, and a resource nobody can see reads as a broken spell. -->
+                <node id="ActionResourceDefinition">
+                    <attribute id="Description"               type="TranslatedString" handle="{{H_RES_DESC}}" version="1"/>
+                    <attribute id="DisplayName"               type="TranslatedString" handle="{{H_RES_NAME}}" version="1"/>
+                    <attribute id="MaxLevel"                  type="uint32"      value="0"/>
+                    <attribute id="Name"                      type="FixedString" value="{{RESOURCE_ID}}"/>
+                    <!-- ShortRest replenishes on long rest too. LongRest does not. -->
+                    <attribute id="ReplenishType"             type="FixedString" value="ShortRest"/>
+                    <attribute id="IsSpellResource"           type="bool"        value="false"/>
+                    <attribute id="ShowOnActionResourcePanel" type="bool"        value="true"/>
+                    <attribute id="UUID"                      type="guid"        value="{{RESOURCE_UUID}}"/>
+                </node>
+            </children>
+        </node>
+    </region>
+</save>
+"""
+
+LEVELMAP = """<?xml version="1.0" encoding="utf-8"?>
+<save>
+    <version major="4" minor="0" revision="9" build="331"/>
+    <region id="LevelMapValues">
+        <node id="root">
+            <children>
+                <!-- A value that scales with class level, referenced from a stats field
+                     as LevelMapValue({{LEVELMAP_ID}}).
+
+                     ⚠ THIS IS THE ONLY WAY TO SCALE A NUMBER BY LEVEL. A passive cannot
+                     change a die size or a magnitude that lives in a damage expression;
+                     it can only add or remove itself. Vanilla scales SuperiorityDie,
+                     sneak attack and cantrip damage exactly this way.
+
+                     Add a <node id="LevelMapValue"> per breakpoint. FallbackValue is
+                     what applies below the lowest level named. -->
+                <node id="LevelMap">
+                    <attribute id="FallbackValue" type="LSString"  value="1d8"/>
+                    <attribute id="Level{{FIRST_LEVEL}}" type="LSString" value="1d8"/>
+                    <attribute id="Name"          type="FixedString" value="{{LEVELMAP_ID}}"/>
+                    <attribute id="PreferredClassUUID" type="guid"  value="{{PARENT_UUID}}"/>
+                    <attribute id="UUID"          type="guid"       value="{{LEVELMAP_UUID}}"/>
+                </node>
+            </children>
+        </node>
+    </region>
+</save>
+"""
+
+SPELLLIST = """<?xml version="1.0" encoding="UTF-8"?>
+<save>
+    <version major="4" minor="8" revision="0" build="0"/>
+    <region id="SpellLists">
+        <node id="root">
+            <children>
+                <!-- Progressions.lsx grants this whole list with
+                     AddSpells({{SPELLLIST_UUID}}). Add more spell names to `Spells`,
+                     semicolon-separated, and they are granted together. -->
+                <node id="SpellList">
+                    <attribute id="Name"   type="FixedString" value="{{NAME}} Spells"/>
+                    <attribute id="Spells" type="LSString"    value="{{SPELL_ID}}"/>
+                    <attribute id="UUID"   type="guid"        value="{{SPELLLIST_UUID}}"/>
+                </node>
+            </children>
+        </node>
+    </region>
+</save>
+"""
+
+SPELL = """// {{NAME}} - spells.
+//
+// ⚠ REPLACE THIS. It is a deliberately dull weapon attack that costs one
+// {{RESOURCE_ID}}, present so the whole chain is provable in game before any design
+// exists: resource -> spell -> spell list -> progression -> hotbar.
+//
+// Three things vanilla does that are easy to get wrong, and all three are here:
+//
+//   1. ExecuteWeaponFunctors(MainHand) is what makes weapon enchantments and on-hit
+//      riders fire. Omit it and the player's magic sword silently stops working
+//      through your spell.
+//   2. DealDamage needs the damage TYPE, not just the amount.
+//   3. HitCosts vs UseCosts. HitCosts spends only on a hit, which is how Battle
+//      Master maneuvers work; UseCosts spends on a miss too. Choose deliberately -
+//      it is one of the largest balance levers you have.
+
+new entry "{{SPELL_ID}}"
+type "SpellData"
+data "SpellType" "Target"
+data "TargetRadius" "MeleeMainWeaponRange"
+data "TargetConditions" "Character() and not Self()"
+data "Icon" "Action_PushingAttack_Melee"     // a REAL vanilla icon, not an invented name
+data "DisplayName" "{{H_SPELL_NAME}};1"
+data "Description" "{{H_SPELL_DESC}};1"
+data "UseCosts" "ActionPoint:1"
+data "HitCosts" "{{RESOURCE_ID}}:1"
+data "SpellSuccess" "ExecuteWeaponFunctors(MainHand);DealDamage(max(1,MainMeleeWeapon),MainMeleeWeaponDamageType)"
+data "SpellRoll" "Attack(AttackType.MeleeWeaponAttack)"
+data "SpellProperties" "GROUND:SurfaceChange(Douse)"
+data "VerbalIntent" "Damage"
+data "SpellFlags" "IsMelee;IsHarmful;IsSpell"
+data "SpellAnimation" "b3e6f0f1-4d5f-4ba2-a1b7-56b1a3e0d81a,,;,,;dc2e5bd1-7d64-4b9c-9b6f-9c1c0e5b6c2f,,;,,;,,;,,;,,;,,;,,"
+"""
+
+# ------------------------------------------------------------- class icon -----
+# Sizes and paths measured from a working mod's own GUI tree, not guessed:
+#   Assets/ClassIcons/<Name>.DDS               300x300
+#   Assets/ClassIcons/hotbar/<Name>.DDS        140x140
+#   AssetsLowRes/ClassIcons/<Name>.DDS         152x152
+#   AssetsLowRes/ClassIcons/hotbar/<Name>.DDS   72x72
+ICON_SIZES = [
+    ("Assets/ClassIcons/{name}.DDS", 300),
+    ("Assets/ClassIcons/hotbar/{name}.DDS", 140),
+    ("AssetsLowRes/ClassIcons/{name}.DDS", 152),
+    ("AssetsLowRes/ClassIcons/hotbar/{name}.DDS", 72),
+]
+
+
+def icon_colour(name: str) -> tuple:
+    """A stable colour per class name. Deterministic so a re-scaffold does not reshuffle."""
+    h = int(hashlib.sha256(name.encode("utf-8")).hexdigest()[:6], 16)
+    # Keep it dark and saturated - BG3's character sheet puts these on a light panel,
+    # and a pale placeholder is invisible rather than obviously temporary.
+    return (60 + (h & 0x3F), 40 + ((h >> 8) & 0x3F), 90 + ((h >> 16) & 0x5F), 255)
+
+
+def write_class_icon(root: Path, name: str) -> list[str]:
+    """Write a rudimentary placeholder class icon in all four sizes.
+
+    ⭐ WHY A GENERATOR SHIPS ART AT ALL, WHEN IT REFUSES TO SHIP DESIGN.
+        A missing class icon is a BLANK ENTRY on the character-creation screen. That is a
+        plumbing failure wearing an art failure's clothes: the mod is not broken-looking,
+        it is invisible, and a first-timer reads that as "my subclass did not register"
+        and starts debugging the wrong thing.
+
+        So this writes something deliberately crude - a disc and a letter - whose only
+        job is to prove the slot is wired. Replace it. It is meant to look temporary.
+
+    ⚠ UNVERIFIED IN GAME. These are UNCOMPRESSED RGBA DDS written by Pillow, not BC-
+        compressed via texconv the way a shipping mod would be. The format is standard and
+        the game should read it, but nobody has loaded one of these into BG3 yet. If the
+        slot is still blank, run the .png beside it through texconv and use that.
+    """
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        return []
+
+    made = []
+    base = 300
+    img = Image.new("RGBA", (base, base), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    col = icon_colour(name)
+    d.ellipse((10, 10, base - 10, base - 10), fill=col,
+              outline=(230, 220, 190, 255), width=6)
+    letter = name[0].upper()
+    # No font file is guaranteed on any machine, so the default bitmap font is used and
+    # scaled up. It looks crude, which is the point.
+    tmp = Image.new("RGBA", (60, 60), (0, 0, 0, 0))
+    ImageDraw.Draw(tmp).text((22, 22), letter, fill=(240, 235, 215, 255), anchor="mm")
+    img.alpha_composite(tmp.resize((base // 2, base // 2), Image.LANCZOS),
+                        (base // 4, base // 4))
+
+    for rel, size in ICON_SIZES:
+        p = root / "Mods" / name / "GUI" / rel.format(name=name)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        resized = img.resize((size, size), Image.LANCZOS)
+        resized.save(p)
+        # The .png beside it is the thing you hand to texconv, or edit.
+        resized.save(p.with_suffix(".png"))
+        made.append(str(p.relative_to(root)).replace("\\", "/"))
+    return made
+
 
 FILES = [
     ("Mods/{{NAME}}/meta.lsx", META),
@@ -349,6 +552,10 @@ FILES = [
     ("Public/{{NAME}}/Progressions/Progressions.lsx", PROGRESSIONS),
     ("Public/{{NAME}}/Progressions/ProgressionDescriptions.lsx", PROGDESC),
     ("Public/{{NAME}}/Stats/Generated/Data/Passive.txt", PASSIVE),
+    ("Public/{{NAME}}/Stats/Generated/Data/Spell_Target.txt", SPELL),
+    ("Public/{{NAME}}/ActionResourceDefinitions/ActionResourceDefinitions.lsx", ACTIONRESOURCE),
+    ("Public/{{NAME}}/Levelmaps/LevelMapValues.lsx", LEVELMAP),
+    ("Public/{{NAME}}/Lists/SpellLists.lsx", SPELLLIST),
     ("Localization/English/{{NAME}}.xml", LOCA),
 ]
 
@@ -373,6 +580,10 @@ QUESTIONS = [
     ("description", "One sentence describing the subclass", None),
     ("feature_name", "Display name of your first feature (a placeholder is fine)",
      "Placeholder Feature"),
+    ("resource_name", "Display name of the pool your class spends (e.g. Warp Dice)",
+     "Focus"),
+    ("spell_name", "Display name of your first spell/ability (a placeholder is fine)",
+     "Placeholder Strike"),
     ("first_level", "Class level the subclass is chosen at (3 for most)", "3"),
     ("primary_ability", "Primary ability: 1=STR 2=DEX 3=CON 4=INT 5=WIS 6=CHA", "1"),
 ]
@@ -430,6 +641,22 @@ def init(args) -> int:
         "h_desc": new_handle(),
         "h_feat_name": new_handle(),
         "h_feat_desc": new_handle(),
+        # The spell chain: a resource to spend, a spell that spends it, a list that
+        # grants the spell, and a levelmap to scale it. Ids are PREFIXED with the mod
+        # name because these live in a global namespace shared with every other mod -
+        # an unprefixed "Focus" resource is a collision waiting to happen.
+        "resource_name": answers.get("resource_name") or "Focus",
+        "resource_id": f"{name}Resource",
+        "resource_uuid": new_uuid(),
+        "spell_name": answers.get("spell_name") or "Placeholder Strike",
+        "spell_id": f"Target_{name}_Placeholder",
+        "spelllist_uuid": new_uuid(),
+        "levelmap_id": f"{name}Die",
+        "levelmap_uuid": new_uuid(),
+        "h_res_name": new_handle(),
+        "h_res_desc": new_handle(),
+        "h_spell_name": new_handle(),
+        "h_spell_desc": new_handle(),
         "version64": version64(1, 0, 0, 0),
         "_provenance": {
             "parent_uuid_read_from": str(Path(args.unpacked)),
@@ -494,6 +721,19 @@ def scaffold(args) -> int:
             except ET.ParseError as e:
                 raise ForgeError(f"generated {p} is not well-formed XML: {e}. This is a "
                                  f"bug in forge.py, not in your input.")
+
+    # The class icon is written AFTER the XML check because it is not XML, and it is
+    # written at all because a missing one is a BLANK entry on the class-select screen -
+    # a plumbing failure wearing an art failure's clothes.
+    icons = write_class_icon(root, cfg["name"])
+    if icons:
+        print(f"\nplaceholder class icon written in {len(icons)} size(s). "
+              f"It is meant to look temporary.")
+    else:
+        print("\n⚠ Pillow is not installed, so NO class icon was generated. Your subclass "
+              "will show\n  a BLANK entry at character creation until you add one. "
+              "`pip install Pillow` and\n  re-run scaffold, or author the four DDS files "
+              "by hand.")
 
     print(f"\nscaffolded {len(written)} file(s) under {root}/\n")
     for p in written:

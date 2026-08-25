@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<save>
+    <version major="4" minor="0" revision="9" build="331"/>
+    <region id="LevelMapValues">
+        <node id="root">
+            <children>
+                <!-- A value that scales with class level, referenced from a stats field
+                     as LevelMapValue(FixtureBladeDie).
+
+                     ⚠ THIS IS THE ONLY WAY TO SCALE A NUMBER BY LEVEL. A passive cannot
+                     change a die size or a magnitude that lives in a damage expression;
+                     it can only add or remove itself. Vanilla scales SuperiorityDie,
+                     sneak attack and cantrip damage exactly this way.
+
+                     Add a <node id="LevelMapValue"> per breakpoint. FallbackValue is
+                     what applies below the lowest level named. -->
+                <node id="LevelMap">
+                    <attribute id="FallbackValue" type="LSString"  value="1d8"/>
+                    <attribute id="Level3" type="LSString" value="1d8"/>
+                    <attribute id="Name"          type="FixedString" value="FixtureBladeDie"/>
+                    <attribute id="PreferredClassUUID" type="guid"  value="721dfac3-92d4-41f5-b773-b7072a86232f"/>
+                    <attribute id="UUID"          type="guid"       value="ea136c96-ba63-507c-94d6-fd14885dba73"/>
+                </node>
+            </children>
+        </node>
+    </region>
+</save>

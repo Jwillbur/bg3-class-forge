@@ -85,6 +85,22 @@ def base_cfg(parent: str, parent_uuid: str) -> dict:
         "h_feat_name": det_handle("feat_name"),
         "h_feat_desc": det_handle("feat_desc"),
         "version64": F.version64(1, 0, 0, 0),
+        # The spell chain, added when the scaffold grew one. `fill()` REFUSED to render
+        # until these existed rather than shipping literal {{PLACEHOLDER}} text into a
+        # fixture - the refusal working on its own author, which is the best kind of
+        # evidence a guard is real.
+        "resource_name": "Fixture Dice",
+        "resource_id": f"{NAME}Resource",
+        "resource_uuid": det_uuid("resource"),
+        "spell_name": "Fixture Strike",
+        "spell_id": f"Target_{NAME}_Placeholder",
+        "spelllist_uuid": det_uuid("spelllist"),
+        "levelmap_id": f"{NAME}Die",
+        "levelmap_uuid": det_uuid("levelmap"),
+        "h_res_name": det_handle("res_name"),
+        "h_res_desc": det_handle("res_desc"),
+        "h_spell_name": det_handle("spell_name"),
+        "h_spell_desc": det_handle("spell_desc"),
     }
 
 

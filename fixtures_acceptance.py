@@ -77,8 +77,14 @@ check("exactly one control", sum(1 for f in man["fixtures"]
                                  if f["severity"] == "control") == 1)
 
 healthy = files_of("healthy")
-check("healthy carries the generated files plus its forge.json",
-      len(healthy) == 7 and "forge.json" in healthy, str(sorted(healthy)))
+# Derived, not counted. A literal here went stale the moment the scaffold grew a spell
+# chain - the same failure as the "six files" assert in forge_acceptance.py, on the same
+# afternoon. Anything a generator produces should be asserted against the generator.
+sys.path.insert(0, str(HERE))
+import forge as _F  # noqa: E402
+check("healthy carries every file the scaffold declares, plus its forge.json",
+      len(healthy) == len(_F.FILES) + 1 and "forge.json" in healthy,
+      str(sorted(healthy)))
 check("the forge.json is what makes a fixture runnable",
       '"name": "FixtureBlade"' in healthy["forge.json"],
       "without it the real validate.py cannot be pointed at a fixture at all")

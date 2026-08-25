@@ -1,0 +1,32 @@
+// FixtureBlade - spells.
+//
+// ⚠ REPLACE THIS. It is a deliberately dull weapon attack that costs one
+// FixtureBladeResource, present so the whole chain is provable in game before any design
+// exists: resource -> spell -> spell list -> progression -> hotbar.
+//
+// Three things vanilla does that are easy to get wrong, and all three are here:
+//
+//   1. ExecuteWeaponFunctors(MainHand) is what makes weapon enchantments and on-hit
+//      riders fire. Omit it and the player's magic sword silently stops working
+//      through your spell.
+//   2. DealDamage needs the damage TYPE, not just the amount.
+//   3. HitCosts vs UseCosts. HitCosts spends only on a hit, which is how Battle
+//      Master maneuvers work; UseCosts spends on a miss too. Choose deliberately -
+//      it is one of the largest balance levers you have.
+
+new entry "Target_FixtureBlade_Placeholder"
+type "SpellData"
+data "SpellType" "Target"
+data "TargetRadius" "MeleeMainWeaponRange"
+data "TargetConditions" "Character() and not Self()"
+data "Icon" "Action_PushingAttack_Melee"     // a REAL vanilla icon, not an invented name
+data "DisplayName" "hdd5e7dd4gb21bg5c4dg8dfdg1027cb4f0d05;1"
+data "Description" "h3ae95f7agd76dg5a3ega379g37cd7784d5fb;1"
+data "UseCosts" "ActionPoint:1"
+data "HitCosts" "FixtureBladeResource:1"
+data "SpellSuccess" "ExecuteWeaponFunctors(MainHand);DealDamage(max(1,MainMeleeWeapon),MainMeleeWeaponDamageType)"
+data "SpellRoll" "Attack(AttackType.MeleeWeaponAttack)"
+data "SpellProperties" "GROUND:SurfaceChange(Douse)"
+data "VerbalIntent" "Damage"
+data "SpellFlags" "IsMelee;IsHarmful;IsSpell"
+data "SpellAnimation" "b3e6f0f1-4d5f-4ba2-a1b7-56b1a3e0d81a,,;,,;dc2e5bd1-7d64-4b9c-9b6f-9c1c0e5b6c2f,,;,,;,,;,,;,,;,,;,,"

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<save>
+    <version major="4" minor="8" revision="0" build="0"/>
+    <region id="SpellLists">
+        <node id="root">
+            <children>
+                <!-- Progressions.lsx grants this whole list with
+                     AddSpells(98779400-0d16-533f-88a1-de2a65cc0eef). Add more spell names to `Spells`,
+                     semicolon-separated, and they are granted together. -->
+                <node id="SpellList">
+                    <attribute id="Name"   type="FixedString" value="FixtureBlade Spells"/>
+                    <attribute id="Spells" type="LSString"    value="Target_FixtureBlade_Placeholder"/>
+                    <attribute id="UUID"   type="guid"        value="98779400-0d16-533f-88a1-de2a65cc0eef"/>
+                </node>
+            </children>
+        </node>
+    </region>
+</save>

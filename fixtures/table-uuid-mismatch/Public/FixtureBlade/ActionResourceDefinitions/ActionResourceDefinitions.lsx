@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<save>
+    <version major="4" minor="3" revision="0" build="333"/>
+    <region id="ActionResourceDefinitions">
+        <node id="root">
+            <children>
+                <!-- Fixture Dice - the pool your class spends.
+                     Granted in Progressions.lsx as: ActionResource(FixtureBladeResource,n,0)
+                     Spent in SpellData as:          UseCosts "FixtureBladeResource:1"
+
+                     ⚠ ShowOnActionResourcePanel MUST be true or the player never sees
+                     the pool, and a resource nobody can see reads as a broken spell. -->
+                <node id="ActionResourceDefinition">
+                    <attribute id="Description"               type="TranslatedString" handle="h1e4d6f93gfa58g58a7g8b07g08f73d803cdd" version="1"/>
+                    <attribute id="DisplayName"               type="TranslatedString" handle="h140bb641g8421g5de0g9859g814a9d6c27c7" version="1"/>
+                    <attribute id="MaxLevel"                  type="uint32"      value="0"/>
+                    <attribute id="Name"                      type="FixedString" value="FixtureBladeResource"/>
+                    <!-- ShortRest replenishes on long rest too. LongRest does not. -->
+                    <attribute id="ReplenishType"             type="FixedString" value="ShortRest"/>
+                    <attribute id="IsSpellResource"           type="bool"        value="false"/>
+                    <attribute id="ShowOnActionResourcePanel" type="bool"        value="true"/>
+                    <attribute id="UUID"                      type="guid"        value="4f47eae4-d262-5a61-b163-3129d8713080"/>
+                </node>
+            </children>
+        </node>
+    </region>
+</save>

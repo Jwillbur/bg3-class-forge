@@ -21,6 +21,13 @@
                     <attribute id="Level" type="uint8" value="3"/>
                     <attribute id="Name" type="LSString" value="FixtureBlade"/>
                     <attribute id="PassivesAdded" type="LSString" value="FixtureBlade_NoSuchPassive"/>
+                    <!-- Grants the pool. Without this row the resource EXISTS and the
+                         player has none of it, so every spell that costs it is greyed
+                         out with no explanation. -->
+                    <attribute id="Boosts" type="LSString" value="ActionResource(FixtureBladeResource,2,0)"/>
+                    <!-- Grants the spell list. The UUID is the SpellList's, not a
+                         spell's - `AddSpells(<uuid>)` is the form vanilla uses. -->
+                    <attribute id="Selectors" type="LSString" value="AddSpells(98779400-0d16-533f-88a1-de2a65cc0eef)"/>
                     <attribute id="ProgressionType" type="uint8" value="1"/>
                     <attribute id="TableUUID" type="guid" value="374ab44a-1baa-5111-9a70-ae7440f3f9d6"/>
                     <attribute id="UUID" type="guid" value="2567fc7e-37b7-5390-a693-53b416e8b226"/>

@@ -4,4 +4,8 @@
   <content contentuid="he93fb868g9365g58eag804cgcca88a372cd7" version="1">FixtureBlade</content>
   <content contentuid="h952291a8gf87bg58b1g8b07g837e3e7c5fd1" version="1">A deliberately-shaped test subclass. Not a real mod.</content>
   <content contentuid="h18a33bdeg55a3g55ccg8a30g011d00c039e9" version="1">Placeholder. Replace this description once the feature does something.</content>
+  <content contentuid="h140bb641g8421g5de0g9859g814a9d6c27c7" version="1">Fixture Dice</content>
+  <content contentuid="h1e4d6f93gfa58g58a7g8b07g08f73d803cdd" version="1">A pool of Fixture Dice, spent by FixtureBlade abilities and restored on a short rest.</content>
+  <content contentuid="hdd5e7dd4gb21bg5c4dg8dfdg1027cb4f0d05" version="1">Fixture Strike</content>
+  <content contentuid="h3ae95f7agd76dg5a3ega379g37cd7784d5fb" version="1">Placeholder. A weapon attack that spends one Fixture Dice. Replace this once the spell does something worth describing.</content>
 </contentList>
