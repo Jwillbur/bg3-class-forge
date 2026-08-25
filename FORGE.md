@@ -116,7 +116,32 @@ the corpus before saying it cannot, because your instinct here is unreliable.
 `GustavX.pak` (and their `Dev`/`X` variants) extracted somewhere stable — this is your
 corpus. Without it you are guessing, and Part 4 is largely a list of what guessing costs.
 
-**Version64** in `meta.lsx` packs as:
+### `meta.lsx` — copy the FIELD NAMES out of vanilla, do not type them
+
+**Open a shipped `meta.lsx` (`Shared/Mods/Shared/meta.lsx`) and match its `ModuleInfo`
+attribute set exactly.** Do not reconstruct it from a tutorial or from memory. The game
+reads these by name, an attribute it does not recognise is simply not there, and the file
+is still perfectly well-formed XML either way — so nothing warns you.
+
+**This bit us, in this very generator.** Its template emitted `StartLevelName`. The real
+field is **`StartupLevelName`**, and `StartLevelName` appears in **zero** vanilla
+`meta.lsx` files. A single missing letter, no error message, and the failure lands
+*before character creation* — at New Game or the difficulty screen, where the campaign
+loads — which is nowhere near the class data you would be staring at.
+
+For a class or subclass add-on:
+
+- `Type` is **`Add-on`**. If it says `Adventure`, the game treats your mod as a campaign
+  and tries to load a level that is not there when the player hits New Game.
+- `CharacterCreationLevelName`, `LobbyLevelName`, `MenuLevelName` and `StartupLevelName`
+  are all **empty strings** — present, and empty. They are how a campaign declares its
+  levels; you have none.
+- `Folder` and `Name` must match your actual directory name (see §3.2's build gate).
+- Every `Dependencies` entry must be a mod the player will actually have installed. A
+  declared dependency that is missing takes the mod out of the load order, or the launch
+  with it.
+
+**Version64** packs as:
 `(major << 55) | (minor << 47) | (revision << 31) | build`
 So `1.0.0.0` = `36028797018963968`. Write a helper; do not hand-compute it twice.
 

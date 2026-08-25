@@ -68,6 +68,14 @@
       "still_parses_as_xml": true
     },
     {
+      "id": "meta-invented-field",
+      "breaks": "meta.lsx says StartupLevelName as `StartLevelName` - a field name that exists in no vanilla meta.lsx.",
+      "symptom": "Crash BEFORE character creation - at New Game / the difficulty screen, where the campaign is loaded.",
+      "severity": "crash",
+      "expect": "NOT YET IMPLEMENTED - every ModuleInfo attribute name appears in vanilla meta.lsx. Derive the legal set from the game data rather than typing it out",
+      "still_parses_as_xml": true
+    },
+    {
       "id": "dependency-absent",
       "breaks": "meta.lsx declares a dependency on a module that is not installed.",
       "symptom": "The mod is skipped, or the load order refuses to launch.",

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<save>
+    <version major="4" minor="4" revision="0" build="444"/>
+    <region id="ClassDescriptions">
+        <node id="root">
+            <children>
+                <!-- FixtureBlade - a Fighter subclass.
+                     ParentGuid was READ FROM THE UNPACKED GAME DATA on this machine, not
+                     copied from a guide. Every other UUID here was generated fresh.
+                     Do NOT add a copy of the Fighter node itself. Nothing in a
+                     ClassDescription references its subclasses, so there is nothing to
+                     override, and overriding it is a liability on every game patch. -->
+                <node id="ClassDescription">
+                    <attribute id="CharacterCreationPose" type="guid" value="0f07ec6e-4ef0-434e-9a51-1353260ccff8"/>
+                    <attribute id="Description" type="TranslatedString" handle="h952291a8gf87bg58b1g8b07g837e3e7c5fd1" version="1"/>
+                    <attribute id="DisplayName" type="TranslatedString" handle="h63b89427gafc2g579dgb356geedf4650dce4" version="1"/>
+                    <attribute id="ShortName" type="TranslatedString" handle="he93fb868g9365g58eag804cgcca88a372cd7" version="1"/>
+                    <attribute id="LearningStrategy" type="uint8" value="1"/>
+                    <attribute id="MustPrepareSpells" type="bool" value="false"/>
+                    <attribute id="CanLearnSpells" type="bool" value="false"/>
+                    <attribute id="Name" type="FixedString" value="FixtureBlade"/>
+                    <attribute id="ParentGuid" type="guid" value="721dfac3-92d4-41f5-b773-b7072a86232f"/>
+                    <attribute id="PrimaryAbility" type="uint8" value="1"/>
+                    <attribute id="ProgressionTableUUID" type="guid" value="374ab44a-1baa-5111-9a70-ae7440f3f9d6"/>
+                    <attribute id="SoundClassType" type="FixedString" value="Fighter"/>
+                    <attribute id="SpellCastingAbility" type="uint8" value="0"/>
+                    <attribute id="UUID" type="guid" value="e5fefb8d-11d4-556f-ac00-cc1b43be0098"/>
+                </node>
+            </children>
+        </node>
+    </region>
+</save>

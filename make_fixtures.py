@@ -156,6 +156,17 @@ def m_duplicate_uuid(t: dict, cfg: dict) -> dict:
     return t
 
 
+def m_meta_invented_field(t: dict, cfg: dict) -> dict:
+    p = f"Mods/{NAME}/meta.lsx"
+    # ⚠ THIS IS A REAL BUG THIS GENERATOR SHIPPED, not a hypothetical. forge.py's META
+    # template emitted `StartLevelName` - a field that appears in ZERO vanilla meta.lsx
+    # files; every one of them says `StartupLevelName`. Nothing caught it, because an
+    # invented attribute name is still well-formed XML with a plausible-looking value.
+    # Found 2026-08-25 while chasing a crash at the difficulty screen.
+    t[p] = t[p].replace('id="StartupLevelName"', 'id="StartLevelName"')
+    return t
+
+
 def m_dependency_absent(t: dict, cfg: dict) -> dict:
     p = f"Mods/{NAME}/meta.lsx"
     dep = (
@@ -227,6 +238,15 @@ FIXTURES = [
      "Undefined - one record shadows the other, and which one wins is not stable.",
      "silent",
      "NOT YET IMPLEMENTED - no UUID appears twice in the mod"),
+
+    ("meta-invented-field", m_meta_invented_field,
+     "meta.lsx says StartupLevelName as `StartLevelName` - a field name that exists in "
+     "no vanilla meta.lsx.",
+     "Crash BEFORE character creation - at New Game / the difficulty screen, where the "
+     "campaign is loaded.",
+     "crash",
+     "NOT YET IMPLEMENTED - every ModuleInfo attribute name appears in vanilla meta.lsx. "
+     "Derive the legal set from the game data rather than typing it out"),
 
     ("dependency-absent", m_dependency_absent,
      "meta.lsx declares a dependency on a module that is not installed.",

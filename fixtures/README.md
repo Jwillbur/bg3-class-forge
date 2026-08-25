@@ -27,6 +27,7 @@ checker can finally be **wrong in a way you can see**.
 | `xml-malformed` | crash | `Progressions.lsx` lost its closing `</region>` |
 | `using-cycle` | crash | two passives `using` each other |
 | `dangling-passive` | crash | grants a passive no stats file defines |
+| `meta-invented-field` | crash | `meta.lsx` says `StartLevelName`; vanilla says `StartupLevelName` |
 | `dependency-absent` | crash | `meta.lsx` needs a module that isn't installed |
 | `unresolvable-parent` | crash | `ParentGuid` is well-formed and matches no class |
 | `table-uuid-mismatch` | silent | `ProgressionTableUUID` ≠ `TableUUID` |
@@ -36,7 +37,11 @@ checker can finally be **wrong in a way you can see**.
 **`healthy` is the most important one.** A checker that flags the control is worse than no
 checker at all, because it teaches you to skim past its output.
 
-Six of the eight name a check that **does not exist yet**. That is the honest state, and
+`meta-invented-field` is not hypothetical: **`forge.py` shipped that exact bug**, found while
+chasing a crash at the difficulty screen. An invented attribute name is well-formed XML with a
+plausible value, so every check we had walked straight past it.
+
+Seven of the nine name a check that **does not exist yet**. That is the honest state, and
 writing it down is the point — the manifest is a to-do list for the validator, expressed
 as evidence rather than as a wish.
 

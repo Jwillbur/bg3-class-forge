@@ -191,7 +191,7 @@ META = """<?xml version="1.0" encoding="utf-8"?>
                     <attribute id="Name" type="FixedString" value="{{NAME}}"/>
                     <attribute id="NumPlayers" type="uint8" value="4"/>
                     <attribute id="PhotoBooth" type="FixedString" value=""/>
-                    <attribute id="StartLevelName" type="FixedString" value=""/>
+                    <attribute id="StartupLevelName" type="FixedString" value=""/>
                     <attribute id="Tags" type="LSString" value="{{TAGS}}"/>
                     <attribute id="Type" type="FixedString" value="Add-on"/>
                     <attribute id="UUID" type="FixedString" value="{{MOD_UUID}}"/>

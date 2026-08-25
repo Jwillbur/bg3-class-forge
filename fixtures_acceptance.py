@@ -161,6 +161,14 @@ check("[dependency-absent] declares an uninstalled module",
 check("[healthy] declares no dependencies",
       '<node id="Dependencies"/>' in healthy[MT])
 
+t = files_of("meta-invented-field")
+check("[meta-invented-field] uses a field name vanilla does not have",
+      'id="StartLevelName"' in t[MT] and 'id="StartupLevelName"' not in t[MT])
+check("[healthy] uses the real field name",
+      'id="StartupLevelName"' in healthy[MT],
+      "verified against every meta.lsx in the unpacked game data - StartLevelName "
+      "appears in none of them")
+
 t = files_of("xml-malformed")
 check("[xml-malformed] the closing tag is the only thing missing",
       "</region>" not in t[PR] and "<region" in t[PR])
