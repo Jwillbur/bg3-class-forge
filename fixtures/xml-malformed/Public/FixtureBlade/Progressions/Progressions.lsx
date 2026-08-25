@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<save>
+    <version major="4" minor="0" revision="4" build="444"/>
+    <region id="Progressions">
+        <node id="root">
+            <children>
+                <!-- Every row shares TableUUID 374ab44a-1baa-5111-9a70-ae7440f3f9d6, which ClassDescriptions
+                     names as ProgressionTableUUID. If those two ever disagree the
+                     subclass silently fails to appear, with no error anywhere.
+                     ProgressionType 1 = Subclass.
+
+                     There is deliberately NO copy of the base-game Fighter level-3
+                     node here. Registration is handled at runtime from the ParentGuid
+                     alone, so this mod never overrides vanilla data and cannot break it.
+
+                     ⚠ ADD A ROW PER LEVEL YOUR SUBCLASS GRANTS AT. Naming a passive in
+                     PassivesAdded that does not exist crashes at LEVEL-UP - after the
+                     player has already committed to the choice. Your validator should
+                     check every name here against your stats files. -->
+                <node id="Progression">
+                    <attribute id="Level" type="uint8" value="3"/>
+                    <attribute id="Name" type="LSString" value="FixtureBlade"/>
+                    <attribute id="PassivesAdded" type="LSString" value="FixtureBlade_Placeholder"/>
+                    <attribute id="ProgressionType" type="uint8" value="1"/>
+                    <attribute id="TableUUID" type="guid" value="374ab44a-1baa-5111-9a70-ae7440f3f9d6"/>
+                    <attribute id="UUID" type="guid" value="2567fc7e-37b7-5390-a693-53b416e8b226"/>
+                </node>
+            </children>
+        </node>
+</save>

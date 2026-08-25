@@ -14,6 +14,8 @@ py forge.py scaffold    # -> a complete, loadable mod tree
 | `forge.py` | The generator. Produces a subclass that **loads** before any design exists. |
 | `FORGE.md` | The prompt. Hand it to an agent — the interview, the tool-build order, and 16 rules, each backed by something that actually went wrong. |
 | `forge_acceptance.py` | Controls. Most of them assert a **refusal**. |
+| `fixtures/` | Nine mods broken on purpose, one defect each, plus the healthy control. The evidence any future checker gets tested against. |
+| `make_fixtures.py` | Regenerates them from the templates above, so they cannot drift into testing a mod shape nothing produces any more. |
 
 ---
 
@@ -59,7 +61,9 @@ story attached.
    the plumbing was fine.
 2. **Build the validator** (`FORGE.md` §3.2 and §3.2b). Sort its checks into *"will it
    silently do nothing"* and *"will the game die."* Most people only ever build the first
-   column. That is how mods crash constantly.
+   column. That is how mods crash constantly. **Test it against `fixtures/`** — six of
+   those eight defects have no check yet, and that list is the fastest honest account of
+   what a validator here still owes you.
 3. **Then design.** That is a conversation with your agent, not a thing a generator should
    guess at.
 
