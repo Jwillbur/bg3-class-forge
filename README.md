@@ -15,6 +15,7 @@ py forge.py scaffold    # -> a complete, loadable mod tree
 | `FORGE.md` | The prompt. Hand it to an agent — the interview, the tool-build order, and 16 rules, each backed by something that actually went wrong. |
 | `forge_acceptance.py` | Controls. Most of them assert a **refusal**. |
 | `modconfig.py` | Where a mod's files live, read from its `forge.json`. Every tool in the toolchain uses it, so there is one codebase rather than a copy per project. |
+| `load_order_audit.py` | Audits a BG3 **load order** against what the installed paks actually contain - dependencies, file conflicts, stats-entry conflicts, and which mods patch which. Answers "does my mod fight anything the player has installed" with measurement. |
 | `fixtures/` | Nine mods broken on purpose, one defect each, plus the healthy control. **All nine are caught and the control stays clean** — measured, not assumed. |
 | `make_fixtures.py` | Regenerates them from the templates above, so they cannot drift into testing a mod shape nothing produces any more. |
 | `build.ps1` | The real build script for every mod made with this toolchain. Each mod gets a shim that finds it. |

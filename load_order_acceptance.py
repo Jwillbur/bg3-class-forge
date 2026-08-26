@@ -1,0 +1,150 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Controls for load_order_audit.py.
+
+⚠ SYNTHETIC FIXTURES, NOT THE LIVE GAME. A harness pointed at a real install passes or
+    fails depending on which mods happen to be installed today - it cries wolf when the
+    data changes and goes quiet when the code breaks. Every case below is constructed.
+
+⚠ THE CONTROL THAT MATTERS MOST IS THE OVERRIDE ONE. The audit's first hand-run reported
+    two override paks as "installed but not loaded" - a fault that was not a fault. An
+    override is DEFINED by being absent from modsettings while overwriting base-game
+    paths, so a tool that calls that broken is worse than no tool: it sends you to
+    re-enable something that is already working.
+
+⚠ AND THE INHERITANCE CHECK MUST FAIL WHEN REVERSED. That check exists to catch one real
+    ordering requirement, so proving it fires on the wrong order matters more than
+    proving it stays quiet on the right one.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import load_order_audit as A  # noqa: E402
+
+ok = bad = 0
+
+
+def check(label: str, cond: bool, detail: str = "") -> None:
+    global ok, bad
+    if cond:
+        ok += 1
+        print(f"  PASS  {label}")
+    else:
+        bad += 1
+        print(f"  FAIL  {label}" + (f" - {detail}" if detail else ""))
+
+
+def rec(name="", uuid="", deps=(), paths=(), entries=(), patches=()):
+    return {"name": name, "uuid": uuid, "deps": list(deps), "paths": list(paths),
+            "entries": list(entries), "patches": list(patches)}
+
+
+def order(*names):
+    return [{"Name": n, "UUID": f"uuid-{n}"} for n in names]
+
+
+print("\nload order audit controls\n")
+
+# ---- overrides vs orphans: the distinction the first hand-run got wrong ---------
+ovr = rec("Shady", "uuid-Shady",
+          paths=["Mods/GustavDev/Story/DialogsBinary/Thing.lsf", "Mods/Shady/meta.lsx"])
+orp = rec("Inert", "uuid-Inert", paths=["Public/Inert/Stuff/thing.txt"])
+check("a pak writing a BASE-GAME path is an override", bool(A.is_override(ovr)))
+check("a pak writing only its own namespace is not", not A.is_override(orp))
+
+f = A.audit(order("Listed"), {"s.pak": ovr, "i.pak": orp,
+                              "l.pak": rec("Listed", "uuid-Listed")})
+check("an override is reported as an override, NOT as a fault",
+      [o["name"] for o in f["overrides"]] == ["Shady"],
+      str(f["overrides"]))
+check("...and is NOT listed as an orphan",
+      "Shady" not in [o["name"] for o in f["orphans"]])
+check("an unlisted pak that overrides nothing IS an orphan",
+      [o["name"] for o in f["orphans"]] == ["Inert"], str(f["orphans"]))
+
+# ---- ghosts --------------------------------------------------------------------
+f = A.audit(order("Real", "Vanished"), {"r.pak": rec("Real", "uuid-Real")})
+check("an entry with no pak is a ghost",
+      [g["name"] for g in f["ghosts"]] == ["Vanished"], str(f["ghosts"]))
+check("...and a real entry is not", "Real" not in [g["name"] for g in f["ghosts"]])
+
+# ---- dependencies --------------------------------------------------------------
+paks = {"a.pak": rec("Lib", "uuid-Lib"),
+        "b.pak": rec("User", "uuid-User", deps=["Lib"])}
+check("dependency loading first is clean",
+      not A.audit(order("Lib", "User"), paks)["deps"])
+f = A.audit(order("User", "Lib"), paks)
+check("dependency loading LATER is a fault",
+      [d["problem"] for d in f["deps"]] == ["loads later"], str(f["deps"]))
+f = A.audit(order("User"), {"b.pak": paks["b.pak"]})
+check("a missing dependency is a fault",
+      [d["problem"] for d in f["deps"]] == ["not loaded"], str(f["deps"]))
+check("a base-game dependency is never a fault",
+      not A.audit(order("Solo"),
+                  {"s.pak": rec("Solo", "uuid-Solo", deps=[])}) ["deps"],
+      "GustavDev and friends are filtered at extraction")
+
+# ---- path conflicts ------------------------------------------------------------
+p1 = rec("First", "uuid-First", paths=["Public/Game/GUI/thing.dds"])
+p2 = rec("Second", "uuid-Second", paths=["Public/Game/GUI/thing.dds"])
+f = A.audit(order("First", "Second"), {"1.pak": p1, "2.pak": p2})
+check("two mods writing one path is a conflict", len(f["path_conflicts"]) == 1)
+check("...and the LATER one is named the winner",
+      f["path_conflicts"][0]["winner"] == "Second", str(f["path_conflicts"]))
+check("different paths are not a conflict",
+      not A.audit(order("First", "Third"),
+                  {"1.pak": p1,
+                   "3.pak": rec("Third", "uuid-Third",
+                                paths=["Public/Game/GUI/other.dds"])})["path_conflicts"])
+
+# ---- stats entry conflicts, which share NO path --------------------------------
+e1 = rec("Alpha", "uuid-Alpha", paths=["Public/Alpha/a.txt"], entries=["SHARED_ENTRY"])
+e2 = rec("Beta", "uuid-Beta", paths=["Public/Beta/b.txt"], entries=["SHARED_ENTRY"])
+f = A.audit(order("Alpha", "Beta"), {"a.pak": e1, "b.pak": e2})
+check("same entry from DIFFERENT files is a conflict", len(f["entry_conflicts"]) == 1,
+      "this is the case a path comparison cannot see")
+check("...and it shares no path", not f["path_conflicts"])
+check("...and the later mod wins", f["entry_conflicts"][0]["winner"] == "Beta")
+
+# ---- ⭐ inheritance, both directions --------------------------------------------
+base = rec("Base", "uuid-Base", paths=["Public/Base/x.txt"], entries=["ENT"])
+patch = rec("Patch", "uuid-Patch", paths=["Public/Patch/x.txt"],
+            entries=["ENT"], patches=["ENT"])
+
+f = A.audit(order("Base", "Patch"), {"b.pak": base, "p.pak": patch})
+check("a patcher loading AFTER what it patches is ok",
+      f["inheritance"] and all(i["ok"] for i in f["inheritance"]), str(f["inheritance"]))
+
+f = A.audit(order("Patch", "Base"), {"b.pak": base, "p.pak": patch})
+check("⭐ a patcher loading BEFORE what it patches is caught",
+      f["inheritance"] and not any(i["ok"] for i in f["inheritance"]),
+      "the whole reason this check exists - it must FAIL on the wrong order")
+check("...and it names both sides and the entry",
+      f["inheritance"][0]["patcher"] == "Patch"
+      and f["inheritance"][0]["patches"] == "Base"
+      and f["inheritance"][0]["entry"] == "ENT")
+check("a self-`using` with nobody else defining it is not an ordering claim",
+      not A.audit(order("Patch"), {"p.pak": patch})["inheritance"],
+      "patching an entry no other installed mod defines constrains nothing")
+
+# ---- refusals ------------------------------------------------------------------
+try:
+    A.read_order(Path("Z:/definitely/not/here/modsettings.lsx"))
+    check("a missing modsettings refuses", False, "it returned instead of raising")
+except A.AuditError:
+    check("a missing modsettings refuses", True)
+
+import tempfile  # noqa: E402
+empty = Path(tempfile.mkdtemp()) / "modsettings.lsx"
+empty.write_text("<save><region id='ModuleSettings'></region></save>", encoding="utf-8")
+try:
+    A.read_order(empty)
+    check("an EMPTY load order refuses rather than reporting clean", False)
+except A.AuditError:
+    check("an EMPTY load order refuses rather than reporting clean", True,
+          "zero mods parsed is a parse failure, not a tidy install")
+
+print(f"\n{ok} passed, {bad} failed")
+sys.exit(1 if bad else 0)
