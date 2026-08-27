@@ -31,6 +31,17 @@ WHAT IT CHECKS, and why each one is a real fault
                       and the patch resolves to nothing and is then overwritten wholesale.
                       This is the check that found the one real ordering requirement in a
                       27-mod list, and the one a human reading names will never find.
+  8 STORY (Osiris)  - two mods writing the same GOAL file: the later replaces the earlier
+                      wholesale, and the earlier mod's story simply never runs. Plus which
+                      mods write goals into a BASE-GAME module, overriding the game's own.
+  9 SHARED FLAGS    - two mods writing the same named flag are coupled through world
+                      state whether they intended it or not.
+
+⚠ SHARED EVENTS ARE NOT REPORTED, ON PURPOSE. Half of any install reacts to LevelLoaded,
+    AddedTo and EntityEvent. Osiris rules are ADDITIVE - every matching rule fires - so
+    two mods hooking one event is normal rather than a conflict. Listing it would bury
+    checks 8 and 9 under a wall of ordinary behaviour, which is how a report stops being
+    read at all.
 
 ⚠ ON OVERRIDES. A pak that is not in modsettings is treated as disabled - but one that
     overwrites vanilla file paths may still take effect, and its precedence is NOT
@@ -38,10 +49,12 @@ WHAT IT CHECKS, and why each one is a real fault
     Mods folder; the reliable location for an override is the game install's own Data
     folder. Sources: NexusMods.App developer docs for BG3, and bg3modmanager.net.
 
-⚠ WHAT IT CANNOT SEE. Semantic conflicts. Two camp mods can both hook the same event
-    from different files with different entry names and fight at runtime, and nothing
-    here will know. A clean run means "no mod overwrites another's files or entries",
-    never "these mods are compatible".
+⚠ WHAT IT CANNOT SEE, stated narrowly because the vague version of this line got used
+    twice as a reason to flag a worry instead of measuring one: two mods adding SEPARATE
+    content to the same moment. Two camp scenes queued for the same night; two encounters
+    placed in one room. Nothing is overwritten, so there is nothing to detect - and
+    REORDERING DOES NOT HELP either, because both simply run. That is a design clash
+    between two mods, not a load-order fault, and the only tool for it is playing.
 """
 from __future__ import annotations
 
@@ -131,7 +144,8 @@ def pak_data(divine: Path, quick: bool) -> dict:
     try:
         for pak in sorted(MODS_DIR.glob("*.pak")):
             rec = {"name": "", "uuid": "", "deps": [], "paths": [],
-                   "entries": [], "patches": [], "hashes": {}}
+                   "entries": [], "patches": [], "hashes": {},
+                   "goals": [], "flags": set()}
             listing = subprocess.run(
                 [str(divine), "-g", "bg3", "-a", "list-package", "-s", str(pak)],
                 capture_output=True, text=True, errors="replace", timeout=300)
@@ -188,6 +202,22 @@ def pak_data(divine: Path, quick: bool) -> dict:
                         um = re.search(r'(?m)^using "([^"]+)"', blk.split("new entry")[0])
                         if um and um.group(1) == nm.group(1):
                             rec["patches"].append(nm.group(1))
+                # ⭐ THE OSIRIS LAYER. Story mods conflict here, not in stats: a goal
+                # file is the unit BG3 executes, and two mods writing the same one means
+                # the loser is simply gone. Flags are the other real signal - two mods
+                # writing the same named flag are talking about the same world state
+                # whether they meant to or not.
+                subprocess.run([str(divine), "-g", "bg3", "-a", "extract-package",
+                                "-s", str(pak), "-d", str(dest),
+                                "-x", "*Story/RawFiles/Goals/*"],
+                               capture_output=True, text=True, timeout=600)
+                for goal in dest.rglob("Story/RawFiles/Goals/*.txt"):
+                    rel = goal.relative_to(dest).as_posix()
+                    rec["goals"].append(rel)
+                    body = goal.read_text(encoding="utf-8", errors="replace")
+                    rec["flags"].update(
+                        re.findall(r"(?:Set|Clear)Flag\s*\(\s*([A-Za-z_]\w*)", body))
+
             out[pak.name] = rec
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -207,7 +237,8 @@ def audit(order: list[dict], paks: dict) -> dict:
     by_name = {r["name"]: (pak, r) for pak, r in paks.items() if r["name"]}
 
     f = {"ghosts": [], "orphans": [], "overrides": [], "deps": [],
-         "path_conflicts": [], "entry_conflicts": [], "inheritance": []}
+         "path_conflicts": [], "entry_conflicts": [], "inheritance": [],
+         "goal_conflicts": [], "story_overrides": [], "shared_flags": []}
 
     for e in order:
         n, u = e["Name"], e.get("UUID", "")
@@ -266,6 +297,36 @@ def audit(order: list[dict], paks: dict) -> dict:
             f["entry_conflicts"].append({"entry": ent, "mods": ordered,
                                          "winner": ordered[-1],
                                          "identical": identical})
+
+    # ⭐ OSIRIS GOALS. Two mods writing the same goal file is a hard conflict - the
+    # later one replaces the earlier wholesale, and the earlier mod's story simply does
+    # not run. A goal written into a BASE-GAME module's folder is an override of the
+    # game's own story.
+    goal_owner = defaultdict(list)
+    for n, rec in active.items():
+        for g in rec["goals"]:
+            goal_owner[g].append(n)
+            parts = g.split("/")
+            if len(parts) > 1 and parts[0] == "Mods" and parts[1] in BASE_MODULES:
+                f["story_overrides"].append({"mod": n, "goal": g, "module": parts[1]})
+    for g, mods in goal_owner.items():
+        if len(mods) > 1:
+            ordered = sorted(mods, key=lambda m: pos[m])
+            f["goal_conflicts"].append({"goal": g, "mods": ordered,
+                                        "winner": ordered[-1]})
+
+    # ⚠ SHARED EVENTS ARE DELIBERATELY NOT REPORTED. Half the installed mods react to
+    # LevelLoaded, AddedTo and EntityEvent, because those fire constantly and Osiris
+    # rules are ADDITIVE - every matching rule runs. Listing that would bury the two
+    # checks above under a wall of normal behaviour. FLAGS are different: a named flag is
+    # shared world state, so two mods writing one are coupled.
+    flag_owner = defaultdict(list)
+    for n, rec in active.items():
+        for fl in rec["flags"]:
+            flag_owner[fl].append(n)
+    for fl, mods in flag_owner.items():
+        if len(mods) > 1:
+            f["shared_flags"].append({"flag": fl, "mods": sorted(mods)})
 
     # ⭐ The inheritance rule. A self-`using` entry patches whoever else defines it.
     for n, rec in active.items():
@@ -363,6 +424,28 @@ def report(f: dict, order: list[dict], paks: dict) -> int:
         print("  every shared entry is defined identically by both mods - nothing to "
               "decide.\n")
 
+    head("STORY (Osiris) - goal files, and who overrides the base game's story")
+    for c in f["goal_conflicts"]:
+        print(f"  ERROR  {' vs '.join(c['mods'])} both write {c['goal']}")
+        print(f"         '{c['winner']}' wins and the other's story does not run.")
+        bad += 1
+    for o in f["story_overrides"]:
+        print(f"  note   {o['mod']} overrides base-game story in {o['module']}")
+        print(f"         {o['goal']}")
+    if not f["goal_conflicts"] and not f["story_overrides"]:
+        print("  no LISTED mod writes another's goal file or overrides base-game story.")
+        print("  (Override paks appear in their own section above - one of those may well")
+        print("   be overwriting base-game story, which is exactly what it is for.)")
+    print()
+
+    head("SHARED FLAGS - two mods writing one named flag share world state")
+    for s in f["shared_flags"]:
+        print(f"  {s['flag']}: {', '.join(s['mods'])}")
+    if not f["shared_flags"]:
+        print("  none - no two mods write the same named flag")
+    print("\n  (Mods reacting to the same EVENT is normal and not listed: Osiris rules\n"
+          "  are additive, and everything hooks LevelLoaded.)\n")
+
     head("⭐ INHERITANCE ORDER - a self-`using` entry patches an existing definition")
     seen = set()
     for i in f["inheritance"]:
@@ -390,9 +473,15 @@ def report(f: dict, order: list[dict], paks: dict) -> int:
         print(f"{bad} problem(s) that change what the game loads.")
     else:
         print("No mod overwrites another's files or entries out of order.")
-    print("⚠ This cannot see SEMANTIC conflicts - two mods hooking the same event from\n"
-          "  different entries will not appear here. A clean run is not a compatibility\n"
-          "  guarantee.")
+    # ⚠ Stated NARROWLY on purpose. The vague version of this line - "cannot see semantic
+    # conflicts" - was used twice as a reason to flag a worry instead of measuring one.
+    # Files, stats entries, goals and flags are all measured now, so what remains is small
+    # and specific, and load order does not fix it anyway.
+    print("⚠ WHAT IS STILL NOT MEASURED: two mods adding SEPARATE content to the same\n"
+          "  moment - two camp scenes queued for one night, two encounters in one room.\n"
+          "  Nothing is overwritten there, so no static check can see it, and REORDERING\n"
+          "  DOES NOT HELP: both simply run. That is a design clash between the mods, and\n"
+          "  the only tool for it is playing and watching.")
     return 1 if bad else 0
 
 
@@ -420,7 +509,8 @@ def main() -> int:
 
     f = audit(order, paks)
     if a.json:
-        print(json.dumps({"order": [e["Name"] for e in order], "findings": f}, indent=1))
+        print(json.dumps({"order": [e["Name"] for e in order],
+                          "findings": f}, indent=1, default=sorted))
         return 1 if (f["ghosts"] or f["deps"]
                      or any(not i["ok"] for i in f["inheritance"])) else 0
     return report(f, order, paks)

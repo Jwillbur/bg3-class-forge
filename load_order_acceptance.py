@@ -36,10 +36,12 @@ def check(label: str, cond: bool, detail: str = "") -> None:
         print(f"  FAIL  {label}" + (f" - {detail}" if detail else ""))
 
 
-def rec(name="", uuid="", deps=(), paths=(), entries=(), patches=(), hashes=None):
+def rec(name="", uuid="", deps=(), paths=(), entries=(), patches=(), hashes=None,
+        goals=(), flags=()):
     return {"name": name, "uuid": uuid, "deps": list(deps), "paths": list(paths),
             "entries": list(entries), "patches": list(patches),
-            "hashes": dict(hashes or {})}
+            "hashes": dict(hashes or {}), "goals": list(goals),
+            "flags": set(flags)}
 
 
 def order(*names):
@@ -152,6 +154,40 @@ check("...and it names both sides and the entry",
 check("a self-`using` with nobody else defining it is not an ordering claim",
       not A.audit(order("Patch"), {"p.pak": patch})["inheritance"],
       "patching an entry no other installed mod defines constrains nothing")
+
+# ---- Osiris: goals and flags ---------------------------------------------------
+# ⭐ THE LAYER STORY MODS ACTUALLY CONFLICT IN. A goal file is the unit BG3 executes, so
+# two mods writing the same one means the loser's story simply never runs.
+g1 = rec("Story1", "g1", paths=["Public/S1/x"], goals=["Mods/Story1/Story/RawFiles/Goals/A.txt"])
+g2 = rec("Story2", "g2", paths=["Public/S2/x"], goals=["Mods/Story1/Story/RawFiles/Goals/A.txt"])
+f = A.audit(order("Story1", "Story2"), {"1.pak": g1, "2.pak": g2})
+check("two mods writing the same GOAL file is a conflict",
+      len(f["goal_conflicts"]) == 1 and f["goal_conflicts"][0]["winner"] == "Story2",
+      str(f["goal_conflicts"]))
+check("...and separate goal files are not",
+      not A.audit(order("Story1", "Story3"),
+                  {"1.pak": g1,
+                   "3.pak": rec("Story3", "g3", paths=["Public/S3/x"],
+                                goals=["Mods/Story3/Story/RawFiles/Goals/B.txt"])}
+                  )["goal_conflicts"])
+
+base_goal = rec("Overrider", "g4", paths=["Public/O/x"],
+                goals=["Mods/GustavDev/Story/RawFiles/Goals/XJA_Thing.txt"])
+f = A.audit(order("Overrider"), {"o.pak": base_goal})
+check("a goal written into a BASE-GAME module is flagged as a story override",
+      f["story_overrides"] and f["story_overrides"][0]["module"] == "GustavDev",
+      str(f["story_overrides"]))
+
+fl1 = rec("F1", "f1", paths=["Public/F1/x"], flags=["MY_SHARED_FLAG"])
+fl2 = rec("F2", "f2", paths=["Public/F2/x"], flags=["MY_SHARED_FLAG"])
+f = A.audit(order("F1", "F2"), {"1.pak": fl1, "2.pak": fl2})
+check("two mods writing the same named FLAG is reported",
+      len(f["shared_flags"]) == 1 and f["shared_flags"][0]["flag"] == "MY_SHARED_FLAG")
+check("...and different flags are not",
+      not A.audit(order("F1", "F3"),
+                  {"1.pak": fl1,
+                   "3.pak": rec("F3", "f3", paths=["Public/F3/x"], flags=["OTHER"])}
+                  )["shared_flags"])
 
 # ---- refusals ------------------------------------------------------------------
 try:
