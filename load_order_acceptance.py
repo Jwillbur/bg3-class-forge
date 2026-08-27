@@ -36,9 +36,10 @@ def check(label: str, cond: bool, detail: str = "") -> None:
         print(f"  FAIL  {label}" + (f" - {detail}" if detail else ""))
 
 
-def rec(name="", uuid="", deps=(), paths=(), entries=(), patches=()):
+def rec(name="", uuid="", deps=(), paths=(), entries=(), patches=(), hashes=None):
     return {"name": name, "uuid": uuid, "deps": list(deps), "paths": list(paths),
-            "entries": list(entries), "patches": list(patches)}
+            "entries": list(entries), "patches": list(patches),
+            "hashes": dict(hashes or {})}
 
 
 def order(*names):
@@ -107,6 +108,29 @@ check("same entry from DIFFERENT files is a conflict", len(f["entry_conflicts"])
       "this is the case a path comparison cannot see")
 check("...and it shares no path", not f["path_conflicts"])
 check("...and the later mod wins", f["entry_conflicts"][0]["winner"] == "Beta")
+
+# ⭐ IDENTICAL DEFINITIONS ARE NOT A CONFLICT. Two mods very often ship the same entry -
+# both derived from the same 5e source, or one vendoring the other. Calling that a
+# finding teaches the reader to skim the section that also carries the real ones.
+same_a = rec("Same1", "u1", paths=["Public/S1/a.txt"], entries=["E"], hashes={"E": "aaa"})
+same_b = rec("Same2", "u2", paths=["Public/S2/b.txt"], entries=["E"], hashes={"E": "aaa"})
+f = A.audit(order("Same1", "Same2"), {"1.pak": same_a, "2.pak": same_b})
+check("two mods defining an entry IDENTICALLY is flagged identical",
+      f["entry_conflicts"] and f["entry_conflicts"][0]["identical"] is True,
+      "byte-identical definitions mean the order between them decides nothing")
+
+diff_b = rec("Diff2", "u3", paths=["Public/D2/b.txt"], entries=["E"], hashes={"E": "bbb"})
+f = A.audit(order("Same1", "Diff2"), {"1.pak": same_a, "2.pak": diff_b})
+check("...and DIFFERING definitions are flagged as a real conflict",
+      f["entry_conflicts"] and f["entry_conflicts"][0]["identical"] is False)
+check("...with the later mod named the winner",
+      f["entry_conflicts"][0]["winner"] == "Diff2")
+
+nohash_b = rec("NoHash", "u4", paths=["Public/N/b.txt"], entries=["E"])
+f = A.audit(order("Same1", "NoHash"), {"1.pak": same_a, "2.pak": nohash_b})
+check("a MISSING hash is never treated as identical",
+      f["entry_conflicts"][0]["identical"] is False,
+      "unknown must fall to the cautious side, not the quiet one")
 
 # ---- ⭐ inheritance, both directions --------------------------------------------
 base = rec("Base", "uuid-Base", paths=["Public/Base/x.txt"], entries=["ENT"])

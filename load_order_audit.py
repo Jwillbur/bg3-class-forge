@@ -46,6 +46,7 @@ WHAT IT CHECKS, and why each one is a real fault
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -130,7 +131,7 @@ def pak_data(divine: Path, quick: bool) -> dict:
     try:
         for pak in sorted(MODS_DIR.glob("*.pak")):
             rec = {"name": "", "uuid": "", "deps": [], "paths": [],
-                   "entries": [], "patches": []}
+                   "entries": [], "patches": [], "hashes": {}}
             listing = subprocess.run(
                 [str(divine), "-g", "bg3", "-a", "list-package", "-s", str(pak)],
                 capture_output=True, text=True, errors="replace", timeout=300)
@@ -174,6 +175,16 @@ def pak_data(divine: Path, quick: bool) -> dict:
                         if not nm:
                             continue
                         rec["entries"].append(nm.group(1))
+                        # ⭐ HASH THE BODY, not just the name. Two mods very often ship
+                        # the SAME definition - both derived from the same 5e source, or
+                        # one vendoring the other. Reporting that as a conflict is crying
+                        # wolf: whichever wins, the game gets identical data. Comments and
+                        # blank lines are stripped, because the question is what the ENGINE
+                        # sees, not how the file is formatted.
+                        lines = [ln.strip() for ln in blk.splitlines()
+                                 if ln.strip() and not ln.strip().startswith("//")]
+                        rec["hashes"][nm.group(1)] = hashlib.sha256(
+                            chr(10).join(lines).encode()).hexdigest()
                         um = re.search(r'(?m)^using "([^"]+)"', blk.split("new entry")[0])
                         if um and um.group(1) == nm.group(1):
                             rec["patches"].append(nm.group(1))
@@ -250,8 +261,11 @@ def audit(order: list[dict], paks: dict) -> dict:
     for ent, mods in owner.items():
         if len(mods) > 1:
             ordered = sorted(mods, key=lambda m: pos[m])
+            hashes = {active[m]["hashes"].get(ent) for m in ordered}
+            identical = len(hashes) == 1 and None not in hashes
             f["entry_conflicts"].append({"entry": ent, "mods": ordered,
-                                         "winner": ordered[-1]})
+                                         "winner": ordered[-1],
+                                         "identical": identical})
 
     # ⭐ The inheritance rule. A self-`using` entry patches whoever else defines it.
     for n, rec in active.items():
@@ -317,17 +331,37 @@ def report(f: dict, order: list[dict], paks: dict) -> int:
     print("  none\n" if not f["path_conflicts"] else "")
 
     head("STATS ENTRY CONFLICTS - same entry defined by two mods, different files")
-    grouped = defaultdict(list)
+    grouped = defaultdict(lambda: {"same": [], "diff": []})
     for c in f["entry_conflicts"]:
-        grouped[tuple(c["mods"])].append(c["entry"])
-    for mods, entries in grouped.items():
-        print(f"  {' vs '.join(mods)}   ({len(entries)} entr(ies))")
-        for e in sorted(entries)[:5]:
-            print(f"      {e}")
-        if len(entries) > 5:
-            print(f"      ... and {len(entries) - 5} more")
-        print(f"      -> '{mods[-1]}' wins on all of them\n")
-    print("  none\n" if not f["entry_conflicts"] else "")
+        grouped[tuple(c["mods"])]["same" if c["identical"] else "diff"].append(c["entry"])
+    real = 0
+    for mods, kinds in grouped.items():
+        print(f"  {' vs '.join(mods)}")
+        if kinds["diff"]:
+            real += 1
+            print(f"      {len(kinds['diff'])} entr(ies) DIFFER - the winner changes "
+                  f"what the game loads:")
+            for e in sorted(kinds["diff"])[:5]:
+                print(f"        {e}")
+            if len(kinds["diff"]) > 5:
+                print(f"        ... and {len(kinds['diff']) - 5} more")
+            print(f"      -> '{mods[-1]}' wins. Move the other below it to flip that.")
+        if kinds["same"]:
+            # ⭐ NOT A CONFLICT. Both mods define it byte-for-byte identically, so the
+            # order between them decides nothing. Reporting it as a finding would train
+            # someone to skim this section - and the section also carries the real ones.
+            print(f"      {len(kinds['same'])} entr(ies) are IDENTICAL in both - "
+                  f"order between these two decides nothing:")
+            for e in sorted(kinds["same"])[:5]:
+                print(f"        {e}")
+            if len(kinds["same"]) > 5:
+                print(f"        ... and {len(kinds['same']) - 5} more")
+        print()
+    if not f["entry_conflicts"]:
+        print("  none\n")
+    elif not real:
+        print("  every shared entry is defined identically by both mods - nothing to "
+              "decide.\n")
 
     head("⭐ INHERITANCE ORDER - a self-`using` entry patches an existing definition")
     seen = set()
