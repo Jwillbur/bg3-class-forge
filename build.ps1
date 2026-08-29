@@ -218,7 +218,24 @@ New-Item -ItemType Directory -Force -Path $locDest | Out-Null
 Get-ChildItem (Join-Path $Workspace 'Localization') -Recurse -Filter *.loca |
     ForEach-Object { Copy-Item $_.FullName $locDest -Force }
 
+# The game reads .DDS. The .png beside each one is make_icons.py's editable
+# master, and it was shipping too - 245 KB, 22% of the extracted payload, for
+# files BG3 never opens. Found in the 2026-08-29 pak audit. Dropped from the
+# STAGE, never from the workspace: the pngs are the source art and regenerating
+# the DDS needs them.
+$png = @(Get-ChildItem $stage -Recurse -File -Filter *.png)
+if ($png.Count -gt 0) {
+    $pngKB = [Math]::Round(($png | Measure-Object Length -Sum).Sum / 1KB)
+    $png | Remove-Item -Force
+    Write-Host "  dropped $($png.Count) .png ($pngKB KB) - the game reads the .DDS" -ForegroundColor DarkGray
+}
+
+# A staging step that silently stages nothing would pack an empty mod, and
+# "0 errors" over an empty pak is the failure this repo spent 2026-08-29 finding.
 $staged = (Get-ChildItem $stage -Recurse -File).Count
+if ($staged -lt 20) {
+    throw "Only $staged file(s) staged - that is not a Warpblade build. Refusing to pack."
+}
 Write-Host "  staged $staged files" -ForegroundColor Green
 
 $outDir = Split-Path $OutPak -Parent
