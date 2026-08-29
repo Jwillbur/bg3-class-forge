@@ -66,6 +66,15 @@ import uuid
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+# A console inherits whatever codepage it has (cp1252 in Git Bash here) and this
+# module's docstring is UTF-8. Without this, `--help` dies on the first star -
+# argparse prints the docstring as its description. Measured, not hypothetical.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 HERE = Path(__file__).resolve().parent
 UNPACKED = Path(os.environ.get("BG3_UNPACKED", r"C:\Modding\bg3_unpacked"))
 LOCALAPP = Path(os.environ.get("LOCALAPPDATA", ""))
