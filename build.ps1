@@ -236,6 +236,26 @@ Write-Host "[5/6] Archive contents (expect Localization/, Mods/, Public/ at root
 # BG3MM and mod.io read this; it ships alongside the pak, not inside it. Generated
 # from meta.lsx every build so it can never disagree with the mod's own metadata,
 # and so its MD5 always matches the pak that was just written.
+# --- feature drift ------------------------------------------------------------
+# The comment at the top of this file has named feature_sig as part of the gate
+# sequence since it was written. It was never actually invoked. It reported TWO
+# features whose implementation had changed since the day they were verified in
+# play - and nothing consumed that, so the mod carried "21 verified" while two of
+# those verifications were stale. Found 2026-08-29.
+#
+# WARNING, not a throw: drift is expected mid-development - you change a feature,
+# then you re-verify it in the next live pass. Failing the build on it would make
+# every legitimate edit unbuildable, and a gate that blocks normal work gets
+# -Skip'd within a week and then guards nothing. The point is that it is SAID.
+$fsig = Join-Path $Workspace 'tools\feature_sig.py'
+if (Test-Path $fsig) {
+    Write-Host "[5b/6] Feature drift..." -ForegroundColor Yellow
+    & py $fsig
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  ^ features have drifted since they were verified IN PLAY. Not a build failure - but do not call those features verified until a live pass re-blesses them." -ForegroundColor Yellow
+    }
+}
+
 $rc = Join-Path $Workspace 'tools\release_check.py'
 if (Test-Path $rc) {
     & py $rc --emit-info
