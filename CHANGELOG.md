@@ -10,6 +10,22 @@ landed upstream**, which is why a release here can be days newer than the last c
 
 ---
 
+## 2026-08-29
+
+- **`load_order_acceptance.py` now declares a UTF-8 stdout.** It prints a star
+  character, and on a cp1252 console (Git Bash on Windows) that is not a mangled
+  glyph — it is a hard `UnicodeEncodeError` that kills the harness partway through.
+  The identical line is fine in PowerShell, which is why this class of bug hides from
+  whoever tests in the wrong shell. It had already taken out `--help` in seven tools
+  upstream, and was reintroduced three times in a single day.
+
+  A new `tools/encoding_gate.py` in the parent repo now refuses any tool that lacks
+  the guard **and** emits characters cp1252 cannot encode, and the project's
+  `selftest.py` discovers it automatically — so this cannot silently return.
+
+  Nothing about the Forge's behaviour changed; the fix is six lines beside the
+  imports, and the 32 load-order controls still pass.
+
 ## 2026-08-28
 
 - `bump_version.py` — version bumping for any forge mod, including the fourth
