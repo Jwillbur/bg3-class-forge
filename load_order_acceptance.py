@@ -197,6 +197,18 @@ except A.AuditError:
     check("a missing modsettings refuses", True)
 
 import tempfile  # noqa: E402
+
+# ⚠ A cp1252 console (Git Bash) cannot encode this file's own output characters,
+# and the failure is a hard UnicodeEncodeError mid-print, not a mangled glyph. It
+# works in PowerShell (UTF-8) and dies in Git Bash, which is why it went unnoticed
+# in seven tools until 2026-08-28 - and why it reappeared here on 2026-08-29 the
+# moment a warning sign was added to an unguarded file.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 empty = Path(tempfile.mkdtemp()) / "modsettings.lsx"
 empty.write_text("<save><region id='ModuleSettings'></region></save>", encoding="utf-8")
 try:
