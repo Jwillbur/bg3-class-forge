@@ -10,6 +10,21 @@ landed upstream**, which is why a release here can be days newer than the last c
 
 ---
 
+## 2026-08-29 (later)
+
+- **`build.ps1` now runs `feature_sig.py`.** Its own header comment had named that tool
+  among the checks whose order matters, alongside `validate.py` and the board - and it
+  was never actually invoked. The comment was the only evidence anyone had, and comments
+  are not executable. It is a WARNING, not a throw: feature drift is normal
+  mid-development, and a gate that fails the build on every legitimate edit gets
+  `-Skip`'d within a week and then guards nothing.
+- **The pack step drops `.png` from the STAGE.** The game reads the `.DDS`; a generator's
+  editable png masters were being packed alongside. On Warpblade that was 462,336 ->
+  215,116 bytes, 53% smaller, with zero content change. Dropped from the stage only -
+  the pngs stay in the workspace, because regenerating a DDS needs them.
+- **The pack step refuses fewer than 20 staged files.** A staging step that silently
+  staged nothing would have produced a confident, empty, perfectly valid pak.
+
 ## 2026-08-29
 
 - **`load_order_acceptance.py` now declares a UTF-8 stdout.** It prints a star
