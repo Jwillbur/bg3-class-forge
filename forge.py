@@ -824,6 +824,38 @@ def scaffold(args) -> int:
         p.write_text(body, encoding="utf-8")
         written.append(p)
 
+    # ⭐ THE CONFIG MOVES INTO THE MOD ROOT, and this is not tidiness.
+    #
+    # `init` writes forge.json to the CWD; `scaffold` writes the mod into a SUBDIRECTORY
+    # named after it. That left the config a SIBLING of the tree it describes, and
+    # modconfig.find() walks UPWARD from the calling file looking for forge.json - so it
+    # found this config and resolved every path one directory too high. Against a freshly
+    # scaffolded mod, `cfg.public`, `cfg.stats`, `cfg.meta` and `cfg.pak` ALL pointed at
+    # paths that do not exist.
+    #
+    # Nothing caught it because the only mod the toolchain had ever been run against is
+    # Warpblade, whose forge.json has always sat inside its own root. The framework worked
+    # perfectly on the one layout it was born in and was broken for every mod it produced
+    # - which is the exact failure a framework exists to prevent, so it is worth the
+    # comment. Found 2026-08-27 by scaffolding a throwaway mod and asking modconfig
+    # whether the paths it returned existed. They did not.
+    #
+    # Moved rather than copied: two forge.json files in a parent/child pair is a trap,
+    # because which one wins depends on the directory a tool happens to be run from.
+    dest = root / cfgp.name
+    if cfgp.resolve() != dest.resolve():
+        dest.write_text(cfgp.read_text(encoding="utf-8"), encoding="utf-8")
+        try:
+            cfgp.unlink()
+        except OSError:
+            print(f"  ! could not remove {cfgp} - delete it by hand. Two forge.json "
+                  f"files in a parent/child pair resolve differently depending on where "
+                  f"a tool is run from.")
+        # deliberately NOT appended to `written`: that list means "files produced from a
+        # FILES template", and it is both counted and XML-validated below. forge.json is
+        # neither templated nor XML.
+        print(f"  forge.json moved into {root}/ so the tools can find this mod")
+
     # ⭐ VALIDATE WHAT WE JUST WROTE, before anyone is told it worked. A generator that
     # emits malformed XML is worse than no generator: it hands you a broken file with a
     # trustworthy provenance story attached to it.

@@ -143,7 +143,11 @@ else:
     # them made this assert fail the moment the icon writer landed, which is a test
     # objecting to correct work - the thing that teaches people to edit tests instead of
     # reading them.
-    templated = [m for m in made if "/GUI/" not in m]
+    # forge.json is excluded for the same reason as the icons: it is not a FILES
+    # template. Scaffold MOVES it into the mod root so modconfig can find the mod at all
+    # (see the seam test at the bottom), which puts a real file on disk that this count
+    # would otherwise read as a thirteenth template.
+    templated = [m for m in made if "/GUI/" not in m and not m.endswith("forge.json")]
     check("it writes every file FILES declares", len(templated), len(F.FILES))
     check("and that includes the whole spell chain",
           all(any(k in m for m in templated) for k in
@@ -165,7 +169,9 @@ else:
     cd = next(Path(a.out).rglob("ClassDescriptions.lsx")).read_text(encoding="utf-8")
     check("the REAL parent GUID is written into the file",
           "721dfac3-92d4-41f5-b773-b7072a86232f" in cd)
-    cfg = json.loads(Path(a.config).read_text(encoding="utf-8"))
+    # forge.json now lives INSIDE the scaffolded root, not at a.config beside it -
+    # see the seam test at the bottom of this file for why that had to change.
+    cfg = json.loads((Path(a.out) / Path(a.config).name).read_text(encoding="utf-8"))
     check("ProgressionTableUUID matches the progression rows' TableUUID",
           cfg["table_uuid"] in next(Path(a.out).rglob("Progressions.lsx"))
           .read_text(encoding="utf-8"))
@@ -206,6 +212,61 @@ else:
     F.init(Args(**{**aa.__dict__, "force": True}))
     refuses("re-running init will not silently mint a new mod UUID",
             lambda: F.init(aa))
+
+# ---------------------------------------------------------------------------------
+# ⭐ THE SEAM: a scaffolded mod must be FINDABLE by the tools that operate on it.
+#
+# This is the test that was missing, and its absence hid a real bug for the whole life
+# of the framework. `init` writes forge.json to the CWD; `scaffold` writes the mod into
+# a SUBDIRECTORY named after it. That left the config a sibling of the tree it describes,
+# and because modconfig walks UPWARD looking for forge.json, every path it returned for
+# a freshly scaffolded mod was one directory too high and did not exist.
+#
+# 65 fixture checks passed throughout, because make_fixtures.py builds its fixtures with
+# forge.json already inside each root - the correct layout, which the real scaffold path
+# never produced. A fixture that does not reproduce the real path proves the code works
+# on a shape the code never actually emits.
+#
+# So this test drives the REAL commands, in a real temp dir, and then asks the question
+# that matters: does every path modconfig hands back exist?
+import json as _json  # noqa: E402
+import subprocess as _sp  # noqa: E402
+import sys as _sys  # noqa: E402
+import tempfile as _tf  # noqa: E402
+
+FORGE_DIR = Path(__file__).resolve().parent
+_unpacked = Path(r"C:\Modding\bg3_unpacked")
+if _unpacked.is_dir():
+    d = Path(_tf.mkdtemp())
+    (d / "a.json").write_text(_json.dumps({
+        "name": "ScaffoldProbe", "parent": "Fighter", "author": "t",
+        "description": "d", "feature_name": "F", "first_level": 3}), encoding="utf-8")
+
+    def _forge(*a):
+        return _sp.run([_sys.executable, str(FORGE_DIR / "forge.py"), *a],
+                       cwd=str(d), capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+
+    r1 = _forge("init", "--answers", "a.json")
+    r2 = _forge("scaffold")
+    root = d / "ScaffoldProbe"
+    check("scaffold runs end to end", r2.returncode, 0)
+    check("the mod root is created", root.is_dir(), True)
+    check("** forge.json ends up INSIDE the mod root", (root / "forge.json").is_file(), True)
+    check("** and NOT left beside it, where it resolves one level too high",
+          (d / "forge.json").is_file(), False)
+
+    _sys.path.insert(0, str(FORGE_DIR))
+    import modconfig as _mc  # noqa: E402
+    cfg = _mc.load(root)
+    for attr in ("root", "public", "mods", "stats", "loca", "meta"):
+        check("** modconfig.%s resolves to a real path on a scaffolded mod" % attr,
+              getattr(cfg, attr).exists(), True)
+    check("the resolved root IS the mod root, not its parent",
+          cfg.root.resolve(), root.resolve())
+else:
+    print("  SKIP  scaffold seam test - no unpacked game data on this machine")
+
 
 print("\n" + ("ALL GREEN" if OK else "SOMETHING FAILED"))
 sys.exit(0 if OK else 1)
