@@ -97,10 +97,28 @@ Write-Host "deploy to : $ModsDir`n"
 if (-not $SkipSelfTest -and -not $env:FORGE_SELFTEST_RUNNING) {
     $selftest = Join-Path $Workspace 'tools\selftest.py'
     if (Test-Path $selftest) {
-        Write-Host "[0a/6] Self-testing the toolchain..." -ForegroundColor Yellow
-        & py $selftest
-        if ($LASTEXITCODE -ne 0) {
-            throw "A tool's own acceptance harness is failing. Fix that before trusting anything else this build reports, or re-run with -SkipSelfTest."
+        # Skip a re-run whose answer is already known. The stamp hashes every .py the
+        # suite runs OR exercises, so it only matches when nothing under test moved.
+        # ⚠ A GREEN STAMP IS THE ONLY SKIPPABLE ONE - a red result always re-runs, so a
+        #   failing suite can never be cached into a pass.
+        $stamp = Join-Path $Workspace 'tools\out\selftest.json'
+        $skip = $false
+        if (Test-Path $stamp) {
+            try {
+                $prev = Get-Content $stamp -Raw | ConvertFrom-Json
+                $now = & py $selftest --fingerprint 2>$null
+                if ($prev.ok -and $prev.fingerprint -and $now -and $prev.fingerprint -eq $now.Trim()) {
+                    Write-Host "[0a/6] Self-test SKIPPED - $($prev.checks) checks across $($prev.harnesses) harnesses were green at $($prev.when) and no tool has changed since." -ForegroundColor DarkGray
+                    $skip = $true
+                }
+            } catch { $skip = $false }
+        }
+        if (-not $skip) {
+            Write-Host "[0a/6] Self-testing the toolchain..." -ForegroundColor Yellow
+            & py $selftest
+            if ($LASTEXITCODE -ne 0) {
+                throw "A tool's own acceptance harness is failing. Fix that before trusting anything else this build reports, or re-run with -SkipSelfTest."
+            }
         }
     }
 }
