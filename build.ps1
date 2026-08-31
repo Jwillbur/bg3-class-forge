@@ -185,12 +185,21 @@ if (-not $SkipValidate) {
         if (Test-Path $ta) {
             & py $ta | Select-Object -Last 3
         }
-        Write-Host "[0c/6] Linting for gated saving throws..." -ForegroundColor Yellow
+        # Does the mod tell the player the truth? Nothing else asks. A tooltip that
+        # promises a status the functors never apply passes every other gate, because
+        # both halves are well-formed on their own. Reports rather than blocks: its
+        # EXPLAINED_BY ledger already keeps the run quiet, so a finding here is real.
+        $tt = Join-Path $Workspace 'tools/tooltip_audit.py'
+        if (Test-Path $tt) {
+            Write-Host "[0c/6] Auditing tooltips against the functors..." -ForegroundColor Yellow
+            & py $tt | Select-Object -Last 3
+        }
+        Write-Host "[0d/6] Linting for gated saving throws..." -ForegroundColor Yellow
         & py $sim --lint
         if ($LASTEXITCODE -ne 0) {
             throw "sim.py --lint failed: a SavingThrow is gated behind another term and will roll on every event. Move it into its own spell and fire it with UseSpell."
         }
-        Write-Host "[0d/6] Simulating the fight against the mod's own functors..." -ForegroundColor Yellow
+        Write-Host "[0e/6] Simulating the fight against the mod's own functors..." -ForegroundColor Yellow
         & py $sim
         if ($LASTEXITCODE -ne 0) {
             Write-Host "  ^ scenarios above are FAILING. This does not block the build," -ForegroundColor DarkYellow
