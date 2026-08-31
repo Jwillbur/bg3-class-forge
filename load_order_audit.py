@@ -263,6 +263,7 @@ def audit(order: list[dict], paks: dict) -> dict:
     by_name = {r["name"]: (pak, r) for pak, r in paks.items() if r["name"]}
 
     f = {"ghosts": [], "orphans": [], "overrides": [], "deps": [],
+         "duplicates": [], "cycles": [],
          "path_conflicts": [], "entry_conflicts": [], "inheritance": [],
          "goal_conflicts": [], "story_overrides": [], "shared_flags": []}
 
@@ -296,6 +297,53 @@ def audit(order: list[dict], paks: dict) -> dict:
             elif pos[dep] > i:
                 f["deps"].append({"mod": name, "needs": dep, "problem": "loads later",
                                   "mod_at": i + 1, "dep_at": pos[dep] + 1})
+
+    # ⭐ DUPLICATES. A mod listed TWICE in modsettings is not cosmetic: `pos` above is
+    #   built by enumeration, so a repeated name silently collapses to its LAST index
+    #   and every ordering verdict in this file is then measured against a position the
+    #   first copy does not have. Report it before anyone trusts those verdicts.
+    #   Counted by NAME and by UUID separately - a mod can be duplicated under either.
+    name_at = defaultdict(list)
+    uuid_at = defaultdict(list)
+    for i, e in enumerate(order):
+        if e["Name"] in BASE_MODULES:
+            continue
+        name_at[e["Name"]].append(i + 1)
+        if e.get("UUID"):
+            uuid_at[e["UUID"]].append(i + 1)
+    for nm, at in sorted(name_at.items()):
+        if len(at) > 1:
+            f["duplicates"].append({"kind": "name", "value": nm, "at": at})
+    for uu, at in sorted(uuid_at.items()):
+        if len(at) > 1:
+            f["duplicates"].append({"kind": "uuid", "value": uu, "at": at})
+
+    # ⭐ CYCLES. "loads later" above is a per-EDGE verdict, and a cycle is the one shape
+    #   where every edge can be reported and NO order satisfies them all - so a reader
+    #   fixing the edges one at a time chases their tail forever. Say so once, plainly.
+    #   ⚠ A self-dependency (A needs A) is included on purpose: it is a real authoring
+    #     slip, it is a cycle of length 1, and the per-edge check calls it merely "loads
+    #     later" against itself, which reads as nonsense rather than as a fault.
+    graph = {n: [d for d in (by_name.get(n, (None, {}))[1] or {}).get("deps", [])
+                 if d in pos]
+             for n in pos}
+    found, colour = set(), {}
+    def walk(node: str, stack: list) -> None:
+        colour[node] = 1                       # grey: on the current path
+        for nxt in sorted(graph.get(node, [])):
+            if colour.get(nxt) == 1:           # back-edge closes a cycle
+                cyc = stack[stack.index(nxt):] if nxt in stack else [nxt]
+                k = min(range(len(cyc)), key=lambda j: cyc[j])
+                rot = tuple(cyc[k:] + cyc[:k])  # rotate so one cycle reports once
+                found.add(rot)
+            elif colour.get(nxt) != 2:
+                walk(nxt, stack + [nxt])
+        colour[node] = 2                       # black: fully explored
+    for n in sorted(pos):
+        if colour.get(n) != 2:
+            walk(n, [n])
+    for cyc in sorted(found):
+        f["cycles"].append({"mods": list(cyc), "self": len(cyc) == 1})
 
     active = {n: by_name[n][1] for n in pos if n in by_name}
     names = sorted(active)
@@ -467,6 +515,24 @@ def report(f: dict, order: list[dict], paks: dict) -> int:
         print("  (Override paks appear in their own section above - one of those may well")
         print("   be overwriting base-game story, which is exactly what it is for.)")
     print()
+
+    head("DUPLICATES - the same mod listed more than once in modsettings")
+    for d in f["duplicates"]:
+        where = ", ".join(f"#{n}" for n in d["at"])
+        print(f"  ERROR  {d['kind']} {d['value']} appears {len(d['at'])}x at {where}")
+    print("  none\n" if not f["duplicates"] else
+          "         ^ every ordering verdict above measures the LAST copy's position.\n"
+          "           Remove the extras in the launcher, then re-run.\n")
+
+    head("DEPENDENCY CYCLES - no load order can satisfy these")
+    for c in f["cycles"]:
+        if c["self"]:
+            print(f"  ERROR  {c['mods'][0]} declares itself as its own dependency")
+        else:
+            print(f"  ERROR  {' -> '.join(c['mods'] + [c['mods'][0]])}")
+    print("  none\n" if not f["cycles"] else
+          "         ^ fixing these edge by edge cannot converge. One of the declared\n"
+          "           dependencies is wrong and has to be dropped by its author.\n")
 
     head("SHARED FLAGS - two mods writing one named flag share world state")
     for s in f["shared_flags"]:

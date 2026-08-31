@@ -268,6 +268,62 @@ check("** the code records WHY in-process LSLib was rejected, with the numbers",
 check("** threads, not processes - the reason is written down",
       "GIL is released" in SRC_A, "")
 
+# =====================================================================
+print("\n-- duplicates and cycles: the two shapes the per-EDGE check cannot say --")
+# ⚠ Mined session 73 from Nemix3D/bg3-load-order-optimizer, which reports both and we
+#   did not. Neither is cosmetic:
+#   - `pos` is built by enumerate(), so a name listed twice collapses to its LAST index
+#     and EVERY ordering verdict in the file is then measured against a position the
+#     first copy does not have. The duplicate check has to run before those are trusted.
+#   - a cycle is the one shape where every edge reports cleanly and NO order satisfies
+#     them all, so a reader fixing "loads later" one edge at a time never converges.
+dup_order = [{"Name": "Twice", "UUID": "uuid-Twice"},
+             {"Name": "Other", "UUID": "uuid-Other"},
+             {"Name": "Twice", "UUID": "uuid-Twice"}]
+dup_paks = {"t.pak": rec("Twice", "uuid-Twice"), "o.pak": rec("Other", "uuid-Other")}
+fd = A.audit(dup_order, dup_paks)
+kinds = {d["kind"] for d in fd["duplicates"]}
+check("** a mod listed TWICE is reported", bool(fd["duplicates"]), str(fd["duplicates"]))
+check("** ...by NAME and by UUID, since either can be the repeated one",
+      kinds == {"name", "uuid"}, str(kinds))
+check("** ...naming BOTH positions, because the first copy is the invisible one",
+      [d for d in fd["duplicates"] if d["kind"] == "name"][0]["at"] == [1, 3],
+      str(fd["duplicates"]))
+check("a clean load order reports no duplicates",
+      not A.audit(order("A", "B"), {"a.pak": rec("A", "uuid-A"),
+                                    "b.pak": rec("B", "uuid-B")})["duplicates"])
+
+cyc_paks = {"a.pak": rec("A", "uuid-A", deps=["B"]),
+            "b.pak": rec("B", "uuid-B", deps=["A"])}
+fc = A.audit(order("A", "B"), cyc_paks)
+check("** a two-mod dependency CYCLE is reported as a cycle",
+      len(fc["cycles"]) == 1, str(fc["cycles"]))
+check("** ...naming both members", set(fc["cycles"][0]["mods"]) == {"A", "B"},
+      str(fc["cycles"]))
+check("** ...and it is reported ONCE, not once per direction",
+      len(fc["cycles"]) == 1, str(fc["cycles"]))
+check("** the per-edge check still fires too - the cycle explains it, not replaces it",
+      bool(fc["deps"]), str(fc["deps"]))
+
+fs = A.audit(order("Solo"), {"s.pak": rec("Solo", "uuid-Solo", deps=["Solo"])})
+check("** a SELF-dependency is a cycle of length 1, not a nonsense 'loads later'",
+      fs["cycles"] and fs["cycles"][0]["self"] is True, str(fs["cycles"]))
+
+fl = A.audit(order("Lib", "User"), {"l.pak": rec("Lib", "uuid-Lib"),
+                                    "u.pak": rec("User", "uuid-User", deps=["Lib"])})
+check("** a healthy dependency chain is NOT reported as a cycle",
+      not fl["cycles"], str(fl["cycles"]))
+fdeep = A.audit(order("A", "B", "C"),
+                {"a.pak": rec("A", "uuid-A", deps=["B"]),
+                 "b.pak": rec("B", "uuid-B", deps=["C"]),
+                 "c.pak": rec("C", "uuid-C", deps=["A"])})
+check("** a THREE-mod cycle is caught, so it is not just a pair check",
+      len(fdeep["cycles"]) == 1 and len(fdeep["cycles"][0]["mods"]) == 3,
+      str(fdeep["cycles"]))
+check("** a dependency on an UNLISTED mod cannot fabricate a cycle",
+      not A.audit(order("A"), {"a.pak": rec("A", "uuid-A", deps=["Absent"])})["cycles"])
+
+
 print(f"\n{ok} passed, {bad} failed")
 
 sys.exit(1 if bad else 0)
