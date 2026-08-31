@@ -169,7 +169,16 @@ if (-not $SkipValidate) {
     #   It prints its verdict on every build instead, where it cannot be missed.
     $sim = Join-Path $Workspace 'tools/sim.py'
     if (Test-Path $sim) {
-        Write-Host "[0c/6] Simulating the fight against the mod's own functors..." -ForegroundColor Yellow
+        # The LINT half BLOCKS, unlike the scenarios below. A SavingThrow gated behind
+        # another condition term is always a defect - it rolls on every event its field
+        # fires on - and unlike a scenario it encodes no opinion about desired design,
+        # so there is nothing to legitimately disagree with and nothing to wedge.
+        Write-Host "[0c/6] Linting for gated saving throws..." -ForegroundColor Yellow
+        & py $sim --lint
+        if ($LASTEXITCODE -ne 0) {
+            throw "sim.py --lint failed: a SavingThrow is gated behind another term and will roll on every event. Move it into its own spell and fire it with UseSpell."
+        }
+        Write-Host "[0d/6] Simulating the fight against the mod's own functors..." -ForegroundColor Yellow
         & py $sim
         if ($LASTEXITCODE -ne 0) {
             Write-Host "  ^ scenarios above are FAILING. This does not block the build," -ForegroundColor DarkYellow
