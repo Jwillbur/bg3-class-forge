@@ -81,7 +81,7 @@ def make_mod(module: int, publish: int | None = None) -> Path:
 
 
 def git(root: Path, *a: str) -> None:
-    subprocess.run(["git", *a], cwd=str(root), capture_output=True, text=True)
+    subprocess.run(["git", *a], cwd=str(root), capture_output=True, text=True, errors="replace")
 
 
 def git_init(root: Path) -> None:

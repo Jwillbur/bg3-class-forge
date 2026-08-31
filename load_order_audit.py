@@ -166,7 +166,7 @@ def _one_pak(divine: Path, pak: Path, work: Path, quick: bool) -> tuple:
     filt = "*meta.lsx" if quick else "*.lsx"
     subprocess.run([str(divine), "-g", "bg3", "-a", "extract-package",
                     "-s", str(pak), "-d", str(dest), "-x", filt],
-                   capture_output=True, text=True, timeout=600)
+                   capture_output=True, text=True, timeout=600, errors="replace")
     meta = next(dest.rglob("meta.lsx"), None)
     if meta:
         mt = meta.read_text(encoding="utf-8", errors="replace")
@@ -187,7 +187,7 @@ def _one_pak(divine: Path, pak: Path, work: Path, quick: bool) -> tuple:
         subprocess.run([str(divine), "-g", "bg3", "-a", "extract-package",
                         "-s", str(pak), "-d", str(dest),
                         "-x", "*Stats/Generated/Data/*.txt"],
-                       capture_output=True, text=True, timeout=600)
+                       capture_output=True, text=True, timeout=600, errors="replace")
         for txt in dest.rglob("*.txt"):
             body = txt.read_text(encoding="utf-8", errors="replace")
             # `new entry "X"` … `using "X"` is a mod PATCHING an existing X.
@@ -217,7 +217,7 @@ def _one_pak(divine: Path, pak: Path, work: Path, quick: bool) -> tuple:
         subprocess.run([str(divine), "-g", "bg3", "-a", "extract-package",
                         "-s", str(pak), "-d", str(dest),
                         "-x", "*Story/RawFiles/Goals/*"],
-                       capture_output=True, text=True, timeout=600)
+                       capture_output=True, text=True, timeout=600, errors="replace")
         for goal in dest.rglob("Story/RawFiles/Goals/*.txt"):
             rel = goal.relative_to(dest).as_posix()
             rec["goals"].append(rel)

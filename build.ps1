@@ -173,6 +173,14 @@ if (-not $SkipValidate) {
         # another condition term is always a defect - it rolls on every event its field
         # fires on - and unlike a scenario it encodes no opinion about desired design,
         # so there is nothing to legitimately disagree with and nothing to wedge.
+        # The TOOLKIT audits itself too. Every rule in tool_audit.py is a bug that
+        # shipped in this repo; the ACCEPTED ledger keeps the run at zero unexplained
+        # findings, so a NEW one is visible instead of being line eight of a report
+        # nobody reads. Reports rather than blocks - it grades tools, not the mod.
+        $ta = Join-Path $PSScriptRoot '..	ools	ool_audit.py'
+        if (Test-Path $ta) {
+            & py $ta | Select-Object -Last 3
+        }
         Write-Host "[0c/6] Linting for gated saving throws..." -ForegroundColor Yellow
         & py $sim --lint
         if ($LASTEXITCODE -ne 0) {
