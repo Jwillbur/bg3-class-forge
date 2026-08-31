@@ -177,7 +177,11 @@ if (-not $SkipValidate) {
         # shipped in this repo; the ACCEPTED ledger keeps the run at zero unexplained
         # findings, so a NEW one is visible instead of being line eight of a report
         # nobody reads. Reports rather than blocks - it grades tools, not the mod.
-        $ta = Join-Path $PSScriptRoot '..	ools	ool_audit.py'
+        # ⚠ Forward slashes on purpose. This line was written once with '..\t...'
+        #   and the \t became a literal TAB, so Test-Path got a path with the 't'
+        #   eaten out of both 'tools' and 'tool_audit'. It failed loudly enough to
+        #   spot but not to stop the build, so the audit silently never ran.
+        $ta = Join-Path $PSScriptRoot '../tools/tool_audit.py'
         if (Test-Path $ta) {
             & py $ta | Select-Object -Last 3
         }
