@@ -317,6 +317,23 @@ Write-Host "  ok -> $OutPak ($([Math]::Round((Get-Item $OutPak).Length/1KB)) KB)
 Write-Host "[5/6] Archive contents (expect Localization/, Mods/, Public/ at root):" -ForegroundColor Yellow
 & $Divine -g bg3 -a list-package -s $OutPak
 
+# ⛔ AND ACTUALLY CHECK IT. The listing above is PRINTED and nothing consumes it - the
+# same shape as feature_sig reporting drift into the void for a week, and memory_guard
+# printing to a channel nobody read. Every other gate in this repo reads the SOURCE;
+# this is the only one that reads what the game will open.
+# BLOCKS, unlike the reporting audits: a pak that is not what the source says is never
+# an acceptable thing to ship, and there is no judgement call to disagree with.
+$pa = Join-Path $Workspace 'tools/pak_audit.py'
+if (Test-Path $pa) {
+    Write-Host "[5a/6] Verifying the built pak against its source..." -ForegroundColor Yellow
+    & py $pa --dist
+    if ($LASTEXITCODE -eq 2) {
+        Write-Host "  pak audit could not run (no Divine) - UNKNOWN, not clean" -ForegroundColor DarkYellow
+    } elseif ($LASTEXITCODE -ne 0) {
+        throw "The built pak does not match its source. See the findings above; do not ship this."
+    }
+}
+
 # --- 5b. regenerate info.json ------------------------------------------------
 # BG3MM and mod.io read this; it ships alongside the pak, not inside it. Generated
 # from meta.lsx every build so it can never disagree with the mod's own metadata,
@@ -390,6 +407,22 @@ if ($rpt -notmatch [regex]::Escape("$ModName.pak")) {
     throw "Deploy could not be verified - '$ModName.pak' is absent from the real Mods folder listing."
 }
 Write-Host "  verified on disk (report written from outside the container)" -ForegroundColor Green
+
+# ⛔ AND VERIFY WHAT WAS ACTUALLY DEPLOYED, not just that a file with the right NAME
+# turned up. The listing check above proves a Warpblade.pak exists in the Mods folder;
+# it says nothing about WHICH pak. A stale deploy - the game loading last week's build
+# while every tool in the repo reports on today's source - is invisible to every other
+# gate here, because all of them read the source and the source is fine.
+if (Test-Path $pa) {
+    Write-Host "[6b/6] Verifying the DEPLOYED pak..." -ForegroundColor Yellow
+    & py $pa --deployed
+    if ($LASTEXITCODE -eq 2) {
+        Write-Host "  could not read the deployed pak - UNKNOWN, not clean" -ForegroundColor DarkYellow
+    } elseif ($LASTEXITCODE -ne 0) {
+        throw "The DEPLOYED pak does not match the source. The game would load something else."
+    }
+    Write-Host "  the game will load exactly what was just built" -ForegroundColor Green
+}
 
 Write-Host "`nDone. $ModName.pak is installed and confirmed present." -ForegroundColor Cyan
 Write-Host "modsettings.lsx already lists the load order, so BG3 Mod Manager is NOT" -ForegroundColor Cyan
