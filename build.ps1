@@ -158,6 +158,26 @@ if (-not $SkipValidate) {
         }
         Write-Host "  ok" -ForegroundColor Green
     }
+
+    # sim.py runs the the mod's own functors against a scripted fight - a plain attack, a
+    # status landing on the player, three hits into a detonation. Every Spatial Debt
+    # regression so far cost a game launch to find, and three of them were visible in
+    # the data the whole time (Pass 24, and Pass 29 twice).
+    # WARN: REPORTS, DOES NOT BLOCK, and that is deliberate. Its scenarios encode
+    #   DESIRED behaviour, so a known-and-accepted defect would wedge every build until
+    #   it was fixed - which is how a gate gets bypassed permanently and then ignored.
+    #   It prints its verdict on every build instead, where it cannot be missed.
+    $sim = Join-Path $Workspace 'tools/sim.py'
+    if (Test-Path $sim) {
+        Write-Host "[0c/6] Simulating the fight against the mod's own functors..." -ForegroundColor Yellow
+        & py $sim
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  ^ scenarios above are FAILING. This does not block the build," -ForegroundColor DarkYellow
+            Write-Host "    but do not call those mechanics working." -ForegroundColor DarkYellow
+        } else {
+            Write-Host "  ok - no modelled defect" -ForegroundColor Green
+        }
+    }
 }
 
 # --- 1. XML well-formedness --------------------------------------------------
