@@ -218,5 +218,56 @@ except A.AuditError:
     check("an EMPTY load order refuses rather than reporting clean", True,
           "zero mods parsed is a parse failure, not a tidy install")
 
+# =====================================================================
+print("\n-- the findings are DETERMINISTIC, so two runs can be diffed --")
+# ⛔ REGRESSION GUARD, session 73. audit() iterated `set(rec["entries"])` and raw
+#    `.items()` on set-derived dicts. Python randomises string hashing PER PROCESS, so
+#    two IDENTICAL serial runs already disagreed on finding order - measured, and it
+#    predated the parallel pak read that merely exposed it. An audit nobody can diff
+#    against yesterday's is an audit nobody can use.
+#    ⚠ These names are chosen so SORTED order differs from INSERTION order. A control
+#      whose fixture happens to be pre-sorted proves nothing.
+many = order("ModA", "ModB")
+p_many = {
+    "a.pak": rec("ModA", "uuid-ModA",
+                 entries=["zeta", "alpha", "mid", "beta"],
+                 hashes={"zeta": "h1", "alpha": "h1", "mid": "h1", "beta": "h1"},
+                 flags=["zFlag", "aFlag", "mFlag"], goals=["z.txt", "a.txt"]),
+    "b.pak": rec("ModB", "uuid-ModB",
+                 entries=["zeta", "alpha", "mid", "beta"],
+                 hashes={"zeta": "h2", "alpha": "h2", "mid": "h2", "beta": "h2"},
+                 flags=["zFlag", "aFlag", "mFlag"], goals=["z.txt", "a.txt"]),
+}
+fa = A.audit(many, p_many)
+ents = [c["entry"] for c in fa["entry_conflicts"]]
+check("** entry conflicts come out SORTED, not in set-iteration order",
+      ents == sorted(ents), str(ents))
+check("** ...and the fixture would have caught insertion order too",
+      ents != ["zeta", "alpha", "mid", "beta"], str(ents))
+check("** the same input twice gives the SAME findings",
+      A.audit(many, p_many) == fa, "")
+
+
+# =====================================================================
+print("\n-- paks are read in PARALLEL, and that is a measured choice --")
+# ⚠ Item 87 proposed in-process LSLib via pythonnet. Measured instead: 68% of a Divine
+#   call is process start, but threading the spawns we ALREADY make beat the mined idea
+#   (5.5x end to end vs the ~2x in-process offered) with no new dependency.
+SRC_A = (Path(__file__).resolve().parent / "load_order_audit.py").read_text(
+    encoding="utf-8")
+check("JOBS defaults above 1, so the parallel path is the DEFAULT path",
+      A.JOBS > 1, str(A.JOBS))
+check("** pak_data still accepts jobs=1, so a confusing run can be serialised",
+      "jobs" in A.pak_data.__code__.co_varnames, str(A.pak_data.__code__.co_varnames))
+check("** _one_pak is a real per-pak unit, not a closure over shared state",
+      callable(A._one_pak) and "pak" in A._one_pak.__code__.co_varnames, "")
+check("** pak_data restores ORDER after the parallel map",
+      "sorted(pairs)" in SRC_A, "")
+check("** the code records WHY in-process LSLib was rejected, with the numbers",
+      "6.4x" in SRC_A and "pythonnet" in SRC_A, "")
+check("** threads, not processes - the reason is written down",
+      "GIL is released" in SRC_A, "")
+
 print(f"\n{ok} passed, {bad} failed")
+
 sys.exit(1 if bad else 0)

@@ -68,6 +68,7 @@ import subprocess
 import sys
 import tempfile
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 # ⚠ Windows consoles default to cp1252, which cannot encode the warning glyphs this
@@ -135,92 +136,117 @@ def read_order(path: Path = MODSETTINGS) -> list[dict]:
 
 
 # -------------------------------------------------------------------- paks ---
-def pak_data(divine: Path, quick: bool) -> dict:
-    """{pak filename: {name, uuid, deps, paths, entries, patches}} read from the paks."""
+# ⭐ THE SPAWNS ARE THE COST, AND THEY PARALLELISE - MEASURED, session 73.
+#   Item 87 proposed loading LSLib in-process (pythonnet) to kill the per-pak
+#   `Divine.exe` spawn. Measured first, as the item required: pure process start is
+#   48ms, a list-package is 71ms, so 68% of each call is spawn. Across 42 paks x ~3
+#   calls that is ~6.0s of a 12.3s full audit - in-process would have bought ~2x.
+#   ⚠ But the calls are INDEPENDENT, and threading the spawns we already make measured
+#   6.4x at 8 workers and 9.0x at 16 (42 list-packages: 2.86s -> 0.45s -> 0.32s).
+#   Better than the mined idea, with NO pythonnet, NO .NET runtime coupling and NO
+#   second code path bound to an LSLib assembly version. Item 87 closed on this.
+#   Threads, not processes, on purpose: the work is a blocking subprocess wait, so the
+#   GIL is released the whole time and processes would only add their own spawn cost.
+JOBS = 8          # measured sweet spot; 16 is faster still but saturates a small box
+
+
+def _one_pak(divine: Path, pak: Path, work: Path, quick: bool) -> tuple:
+    """Read ONE pak. Pure per-pak work, its own temp dir - safe to run concurrently."""
+    rec = {"name": "", "uuid": "", "deps": [], "paths": [],
+           "entries": [], "patches": [], "hashes": {},
+           "goals": [], "flags": set()}
+    listing = subprocess.run(
+        [str(divine), "-g", "bg3", "-a", "list-package", "-s", str(pak)],
+        capture_output=True, text=True, errors="replace", timeout=300)
+    rec["paths"] = [ln.split("\t")[0].strip()
+                    for ln in (listing.stdout or "").splitlines()
+                    if ln.strip() and not ln.startswith(("Loading", "Listing"))]
+
+    dest = work / pak.stem
+    filt = "*meta.lsx" if quick else "*.lsx"
+    subprocess.run([str(divine), "-g", "bg3", "-a", "extract-package",
+                    "-s", str(pak), "-d", str(dest), "-x", filt],
+                   capture_output=True, text=True, timeout=600)
+    meta = next(dest.rglob("meta.lsx"), None)
+    if meta:
+        mt = meta.read_text(encoding="utf-8", errors="replace")
+        i = mt.find('<node id="ModuleInfo"')
+        head = mt[i:mt.find("<children>", i)] if i >= 0 else ""
+        m = re.search(r'id="Name"[^>]*value="([^"]*)"', head)
+        rec["name"] = m.group(1) if m else ""
+        m = re.search(r'id="UUID"[^>]*value="([^"]*)"', head)
+        rec["uuid"] = m.group(1) if m else ""
+        dep_block = mt[:i] if i >= 0 else mt
+        for blk in re.findall(r'<node id="ModuleShortDesc">(.*?)</node>',
+                              dep_block, re.S):
+            dm = re.search(r'id="Name"[^>]*value="([^"]*)"', blk)
+            if dm and dm.group(1) not in BASE_MODULES:
+                rec["deps"].append(dm.group(1))
+
+    if not quick:
+        subprocess.run([str(divine), "-g", "bg3", "-a", "extract-package",
+                        "-s", str(pak), "-d", str(dest),
+                        "-x", "*Stats/Generated/Data/*.txt"],
+                       capture_output=True, text=True, timeout=600)
+        for txt in dest.rglob("*.txt"):
+            body = txt.read_text(encoding="utf-8", errors="replace")
+            # `new entry "X"` … `using "X"` is a mod PATCHING an existing X.
+            for blk in re.split(r'(?m)^new entry ', body)[1:]:
+                nm = re.match(r'"([^"]+)"', blk)
+                if not nm:
+                    continue
+                rec["entries"].append(nm.group(1))
+                # ⭐ HASH THE BODY, not just the name. Two mods very often ship
+                # the SAME definition - both derived from the same 5e source, or
+                # one vendoring the other. Reporting that as a conflict is crying
+                # wolf: whichever wins, the game gets identical data. Comments and
+                # blank lines are stripped, because the question is what the ENGINE
+                # sees, not how the file is formatted.
+                lines = [ln.strip() for ln in blk.splitlines()
+                         if ln.strip() and not ln.strip().startswith("//")]
+                rec["hashes"][nm.group(1)] = hashlib.sha256(
+                    chr(10).join(lines).encode()).hexdigest()
+                um = re.search(r'(?m)^using "([^"]+)"', blk.split("new entry")[0])
+                if um and um.group(1) == nm.group(1):
+                    rec["patches"].append(nm.group(1))
+        # ⭐ THE OSIRIS LAYER. Story mods conflict here, not in stats: a goal
+        # file is the unit BG3 executes, and two mods writing the same one means
+        # the loser is simply gone. Flags are the other real signal - two mods
+        # writing the same named flag are talking about the same world state
+        # whether they meant to or not.
+        subprocess.run([str(divine), "-g", "bg3", "-a", "extract-package",
+                        "-s", str(pak), "-d", str(dest),
+                        "-x", "*Story/RawFiles/Goals/*"],
+                       capture_output=True, text=True, timeout=600)
+        for goal in dest.rglob("Story/RawFiles/Goals/*.txt"):
+            rel = goal.relative_to(dest).as_posix()
+            rec["goals"].append(rel)
+            body = goal.read_text(encoding="utf-8", errors="replace")
+            rec["flags"].update(
+                re.findall(r"(?:Set|Clear)Flag\s*\(\s*([A-Za-z_]\w*)", body))
+
+    return pak.name, rec
+
+
+def pak_data(divine: Path, quick: bool, jobs: int = JOBS) -> dict:
+    """{pak filename: {name, uuid, deps, paths, entries, patches}} read from the paks.
+
+    ⚠ Order is restored after the parallel map. An audit whose output reshuffles
+      between runs cannot be diffed, and a diff is how anyone uses this.
+    """
     if not MODS_DIR.is_dir():
         raise AuditError(f"no Mods folder at {MODS_DIR}")
-    out = {}
+    paks = sorted(MODS_DIR.glob("*.pak"))
     work = Path(tempfile.mkdtemp(prefix="bg3_audit_"))
     try:
-        for pak in sorted(MODS_DIR.glob("*.pak")):
-            rec = {"name": "", "uuid": "", "deps": [], "paths": [],
-                   "entries": [], "patches": [], "hashes": {},
-                   "goals": [], "flags": set()}
-            listing = subprocess.run(
-                [str(divine), "-g", "bg3", "-a", "list-package", "-s", str(pak)],
-                capture_output=True, text=True, errors="replace", timeout=300)
-            rec["paths"] = [ln.split("\t")[0].strip()
-                            for ln in (listing.stdout or "").splitlines()
-                            if ln.strip() and not ln.startswith(("Loading", "Listing"))]
-
-            dest = work / pak.stem
-            filt = "*meta.lsx" if quick else "*.lsx"
-            subprocess.run([str(divine), "-g", "bg3", "-a", "extract-package",
-                            "-s", str(pak), "-d", str(dest), "-x", filt],
-                           capture_output=True, text=True, timeout=600)
-            meta = next(dest.rglob("meta.lsx"), None)
-            if meta:
-                mt = meta.read_text(encoding="utf-8", errors="replace")
-                i = mt.find('<node id="ModuleInfo"')
-                head = mt[i:mt.find("<children>", i)] if i >= 0 else ""
-                rec["name"] = (re.search(r'id="Name"[^>]*value="([^"]*)"', head) or
-                               [None, ""])[1] if head else ""
-                m = re.search(r'id="Name"[^>]*value="([^"]*)"', head)
-                rec["name"] = m.group(1) if m else ""
-                m = re.search(r'id="UUID"[^>]*value="([^"]*)"', head)
-                rec["uuid"] = m.group(1) if m else ""
-                dep_block = mt[:i] if i >= 0 else mt
-                for blk in re.findall(r'<node id="ModuleShortDesc">(.*?)</node>',
-                                      dep_block, re.S):
-                    dm = re.search(r'id="Name"[^>]*value="([^"]*)"', blk)
-                    if dm and dm.group(1) not in BASE_MODULES:
-                        rec["deps"].append(dm.group(1))
-
-            if not quick:
-                subprocess.run([str(divine), "-g", "bg3", "-a", "extract-package",
-                                "-s", str(pak), "-d", str(dest),
-                                "-x", "*Stats/Generated/Data/*.txt"],
-                               capture_output=True, text=True, timeout=600)
-                for txt in dest.rglob("*.txt"):
-                    body = txt.read_text(encoding="utf-8", errors="replace")
-                    # `new entry "X"` … `using "X"` is a mod PATCHING an existing X.
-                    for blk in re.split(r'(?m)^new entry ', body)[1:]:
-                        nm = re.match(r'"([^"]+)"', blk)
-                        if not nm:
-                            continue
-                        rec["entries"].append(nm.group(1))
-                        # ⭐ HASH THE BODY, not just the name. Two mods very often ship
-                        # the SAME definition - both derived from the same 5e source, or
-                        # one vendoring the other. Reporting that as a conflict is crying
-                        # wolf: whichever wins, the game gets identical data. Comments and
-                        # blank lines are stripped, because the question is what the ENGINE
-                        # sees, not how the file is formatted.
-                        lines = [ln.strip() for ln in blk.splitlines()
-                                 if ln.strip() and not ln.strip().startswith("//")]
-                        rec["hashes"][nm.group(1)] = hashlib.sha256(
-                            chr(10).join(lines).encode()).hexdigest()
-                        um = re.search(r'(?m)^using "([^"]+)"', blk.split("new entry")[0])
-                        if um and um.group(1) == nm.group(1):
-                            rec["patches"].append(nm.group(1))
-                # ⭐ THE OSIRIS LAYER. Story mods conflict here, not in stats: a goal
-                # file is the unit BG3 executes, and two mods writing the same one means
-                # the loser is simply gone. Flags are the other real signal - two mods
-                # writing the same named flag are talking about the same world state
-                # whether they meant to or not.
-                subprocess.run([str(divine), "-g", "bg3", "-a", "extract-package",
-                                "-s", str(pak), "-d", str(dest),
-                                "-x", "*Story/RawFiles/Goals/*"],
-                               capture_output=True, text=True, timeout=600)
-                for goal in dest.rglob("Story/RawFiles/Goals/*.txt"):
-                    rel = goal.relative_to(dest).as_posix()
-                    rec["goals"].append(rel)
-                    body = goal.read_text(encoding="utf-8", errors="replace")
-                    rec["flags"].update(
-                        re.findall(r"(?:Set|Clear)Flag\s*\(\s*([A-Za-z_]\w*)", body))
-
-            out[pak.name] = rec
+        if jobs > 1 and len(paks) > 1:
+            with ThreadPoolExecutor(max_workers=jobs) as ex:
+                pairs = list(ex.map(lambda pk: _one_pak(divine, pk, work, quick), paks))
+        else:
+            pairs = [_one_pak(divine, pk, work, quick) for pk in paks]
     finally:
         shutil.rmtree(work, ignore_errors=True)
+    return {name: rec for name, rec in sorted(pairs)}
     return out
 
 
@@ -286,10 +312,14 @@ def audit(order: list[dict], paks: dict) -> dict:
                                             "winner": second})
 
     owner = defaultdict(list)
+    # ⛔ SORTED, NOT SET ORDER. Python randomises string hashing per process, so
+    #   iterating a set here made the finding order differ between two IDENTICAL
+    #   serial runs - measured session 73, and it predates the parallel read.
+    #   An audit nobody can diff against yesterday's is an audit nobody can use.
     for n, rec in active.items():
-        for ent in set(rec["entries"]):
+        for ent in sorted(set(rec["entries"])):
             owner[ent].append(n)
-    for ent, mods in owner.items():
+    for ent, mods in sorted(owner.items()):
         if len(mods) > 1:
             ordered = sorted(mods, key=lambda m: pos[m])
             hashes = {active[m]["hashes"].get(ent) for m in ordered}
@@ -309,7 +339,7 @@ def audit(order: list[dict], paks: dict) -> dict:
             parts = g.split("/")
             if len(parts) > 1 and parts[0] == "Mods" and parts[1] in BASE_MODULES:
                 f["story_overrides"].append({"mod": n, "goal": g, "module": parts[1]})
-    for g, mods in goal_owner.items():
+    for g, mods in sorted(goal_owner.items()):
         if len(mods) > 1:
             ordered = sorted(mods, key=lambda m: pos[m])
             f["goal_conflicts"].append({"goal": g, "mods": ordered,
@@ -322,9 +352,9 @@ def audit(order: list[dict], paks: dict) -> dict:
     # shared world state, so two mods writing one are coupled.
     flag_owner = defaultdict(list)
     for n, rec in active.items():
-        for fl in rec["flags"]:
+        for fl in sorted(rec["flags"]):
             flag_owner[fl].append(n)
-    for fl, mods in flag_owner.items():
+    for fl, mods in sorted(flag_owner.items()):
         if len(mods) > 1:
             f["shared_flags"].append({"flag": fl, "mods": sorted(mods)})
 
@@ -490,6 +520,8 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--quick", action="store_true",
                     help="skip stats extraction (no entry or inheritance checks)")
+    ap.add_argument("--jobs", type=int, default=JOBS,
+                    help=f"paks read in parallel (default {JOBS}; 1 = serial)")
     ap.add_argument("--json", action="store_true", help="machine-readable findings")
     a = ap.parse_args()
 
@@ -502,7 +534,7 @@ def main() -> int:
                 "Without it this can only read modsettings, which cannot tell you what "
                 "any mod\nactually contains - and that is the entire point. Refusing to "
                 "report a partial\naudit as a clean one.")
-        paks = pak_data(divine, a.quick)
+        paks = pak_data(divine, a.quick, max(1, a.jobs))
     except AuditError as e:
         print(f"cannot audit: {e}", file=sys.stderr)
         return 2
