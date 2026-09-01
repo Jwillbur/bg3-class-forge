@@ -52,6 +52,78 @@ HAVE_GAME = Path(F.UNPACKED).is_dir() and bool(F.unpacked_class_files(Path(F.UNP
 
 print("identity generation:")
 ids = [F.new_uuid() for _ in range(200)]
+def _raises(fn) -> bool:
+    """True if fn() refuses with a ForgeError. Anything else propagates - a control
+    that swallowed every exception would pass on a crash as readily as on a refusal."""
+    try:
+        fn()
+    except F.ForgeError:
+        return True
+    return False
+
+
+def _probe_args(tmp, **kw):
+    class A:
+        pass
+    a = A()
+    a.unpacked = str(F.UNPACKED)
+    a.name = kw.get("name", "ProbeFixture")
+    a.question = kw.get("question", "does the thing happen?")
+    a.parent = kw.get("parent", "Fighter")
+    a.level = kw.get("level", 3)
+    a.passive = kw.get("passive")
+    a.spell = kw.get("spell")
+    a.out = str(tmp)
+    a.force = True
+    return a
+
+
+# ---- probe: the smallest mod that asks ONE question (work-offline item 107c) -------
+# ⭐ It exists because live Pass 35 went TWO sessions unrun: verifying one assumption
+# cost a full Warpblade build, a launch and a reroll, and then twenty other features
+# were candidate causes. These controls hold the two properties that make a probe worth
+# anything - it really is minimal, and it does not overclaim.
+if F.UNPACKED.is_dir():
+    import tempfile as _tf
+    _d = Path(_tf.mkdtemp(prefix="probe_acc_")) / "p"
+    F.probe(_probe_args(_d, name="ProbeFixture",
+                        question="DOES THE THIRD HIT DETONATE"))
+    _files = {str(p.relative_to(_d)).replace("\\", "/") for p in _d.rglob("*") if p.is_file()}
+    check("probe writes a complete loadable tree",
+          "Mods/ProbeFixture/meta.lsx" in _files and
+          "Public/ProbeFixture/Progressions/Progressions.lsx" in _files)
+    check("probe ships its own forge.json so the tools can find it",
+          "forge.json" in _files)
+    check("probe ships the starter validator, so build.ps1's gate has something to run",
+          "tools/validate.py" in _files)
+    _pm = (_d / "PROBE.md").read_text(encoding="utf-8")
+    check("PROBE.md states the question verbatim", "DOES THE THIRD HIT DETONATE" in _pm)
+    # ⚠ The honesty controls. A probe does NOT remove the reroll - a subclass is chosen
+    # at character creation - and saying otherwise would be the "hallucinate success"
+    # failure the directive this was mined from warns about.
+    check("PROBE.md admits the reroll is NOT removed", "does NOT remove" in _pm)
+    check("PROBE.md says a REFUTED result is worth more", "REFUTED probe is worth more" in _pm)
+    check("PROBE.md asks for the observation before the interpretation",
+          "before the interpretation" in _pm)
+
+    # A caller-supplied stats body is the thing under test, so it must land BYTE-EXACT.
+    # Substituting a stray {{TOKEN}} inside it would silently change the experiment.
+    _body = _d.parent / "body.txt"
+    _body.write_text('new entry "Probe_Verbatim"\ntype "PassiveData"\n// {{NOT_A_TOKEN}}\n',
+                     encoding="utf-8")
+    _d2 = _d.parent / "p2"
+    F.probe(_probe_args(_d2, name="ProbeVerbatim", passive=str(_body)))
+    _got = (_d2 / "Public/ProbeVerbatim/Stats/Generated/Data/Passive.txt").read_text(encoding="utf-8")
+    check("a supplied stats body is taken VERBATIM, placeholders and all",
+          "{{NOT_A_TOKEN}}" in _got and "Probe_Verbatim" in _got)
+
+    check("probe refuses an unsafe mod name",
+          _raises(lambda: F.probe(_probe_args(_d.parent / "p3", name="not a name"))))
+    check("probe refuses a parent class that is not in the game data",
+          _raises(lambda: F.probe(_probe_args(_d.parent / "p4", parent="Warlockk"))))
+else:
+    check("probe controls skipped - no unpacked game data on this machine", True)
+
 check("generated UUIDs are unique", len(set(ids)), 200)
 check("...and are real UUIDs", all(uuid.UUID(i) for i in ids))
 h = F.new_handle()

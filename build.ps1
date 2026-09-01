@@ -116,6 +116,14 @@ $DivineCandidates = @(
 # selection at config time; a second source of truth would only drift.
 if ([string]::IsNullOrWhiteSpace($Workspace)) { $Workspace = $PSScriptRoot }
 if (-not (Test-Path $Workspace)) { throw "no such workspace: $Workspace" }
+# ⚠ RESOLVE TO ABSOLUTE. Divine refuses a relative -s with "[FATAL] Cannot proceed
+# without absolute path [E2]", and every path below is derived from $Workspace. This
+# only ever worked because the one caller - Warpblade - was always invoked with an
+# absolute path; `-Workspace .` died at the pack step. Found 2026-09-01 by building a
+# generated probe mod from inside its own directory, which is how anyone else would
+# run it. Same class as the "-lt 20 / not a Warpblade build" guard: a shared script
+# carrying an assumption that only held for the project it grew up in.
+$Workspace = (Resolve-Path -LiteralPath $Workspace).Path
 
 # The mod's name comes from forge.json, same source the Python tools read, so this
 # script works unchanged in any mod built with this toolchain. Refuse rather than fall

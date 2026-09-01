@@ -964,38 +964,26 @@ QUESTIONS = [
 ]
 
 
-def init(args) -> int:
-    answers: dict = {}
-    if args.answers:
-        answers = json.loads(Path(args.answers).read_text(encoding="utf-8"))
-    else:
-        print("\nA few questions. The design conversation is with your agent - this only "
-              "asks\nwhat the generator physically needs.\n")
-        for key, prompt, default in QUESTIONS:
-            d = f" [{default}]" if default else ""
-            v = input(f"  {prompt}{d}: ").strip()
-            if not v and default:
-                v = default
-            answers[key] = v
+def build_cfg(answers: dict, bases: dict, unpacked: str) -> dict:
+    """answers -> a complete forge.json config. ONE builder, two callers.
 
+    `init` and `probe` both need every uuid, handle and derived id the templates
+    reference. A second copy of this dict would drift the moment either grew a field -
+    which is precisely the bug found on 2026-09-01 in a different file, where Divine
+    discovery existed in three places and only one of them probed.
+    """
     name = answers.get("name", "")
     if not SAFE_NAME.match(name):
         raise ForgeError(
             f"name {name!r} will not work. It becomes a folder, a FixedString and an "
             f"EditorID prefix,\nso: start with a letter, then letters/digits/underscore, "
             f"3-40 characters. No spaces.")
-
-    classes = read_classes(Path(args.unpacked))
-    bases = base_classes(classes)
     parent = answers.get("parent", "")
     if parent not in bases:
         raise ForgeError(
             f"{parent!r} is not a base class in your game data. Found: "
             f"{', '.join(sorted(bases))}.\nThis tool will not invent a ParentGuid.")
-
-    # ⚠ Every id below is generated HERE and written down, so the same values are reused
-    # on a re-scaffold instead of silently producing a second, conflicting mod identity.
-    cfg = {
+    return {
         "name": name,
         "parent": parent,
         "parent_uuid": bases[parent]["uuid"],
@@ -1016,10 +1004,6 @@ def init(args) -> int:
         "h_desc": new_handle(),
         "h_feat_name": new_handle(),
         "h_feat_desc": new_handle(),
-        # The spell chain: a resource to spend, a spell that spends it, a list that
-        # grants the spell, and a levelmap to scale it. Ids are PREFIXED with the mod
-        # name because these live in a global namespace shared with every other mod -
-        # an unprefixed "Focus" resource is a collision waiting to happen.
         "resource_name": answers.get("resource_name") or "Focus",
         "resource_id": f"{name}Resource",
         "resource_uuid": new_uuid(),
@@ -1032,8 +1016,6 @@ def init(args) -> int:
         "h_res_desc": new_handle(),
         "h_spell_name": new_handle(),
         "h_spell_desc": new_handle(),
-        # Not used by any template. Written down because the balance tools read it, and
-        # because an answer given at init is a decision recorded rather than a memory.
         "balance": {
             "compare_to": answers.get("compare_to") or "",
             "pool_size": answers.get("pool_size") or "",
@@ -1044,12 +1026,35 @@ def init(args) -> int:
         },
         "version64": version64(1, 0, 0, 0),
         "_provenance": {
-            "parent_uuid_read_from": str(Path(args.unpacked)),
+            "parent_uuid_read_from": str(unpacked),
             "note": "parent_uuid came from the unpacked game data on this machine. "
                     "Every other uuid/handle here was generated fresh. Nothing was "
                     "copied from a guide.",
         },
     }
+
+
+def init(args) -> int:
+    answers: dict = {}
+    if args.answers:
+        answers = json.loads(Path(args.answers).read_text(encoding="utf-8"))
+    else:
+        print("\nA few questions. The design conversation is with your agent - this only "
+              "asks\nwhat the generator physically needs.\n")
+        for key, prompt, default in QUESTIONS:
+            d = f" [{default}]" if default else ""
+            v = input(f"  {prompt}{d}: ").strip()
+            if not v and default:
+                v = default
+            answers[key] = v
+
+    classes = read_classes(Path(args.unpacked))
+    bases = base_classes(classes)
+    # ⚠ Every id is generated ONCE, here, and written down - so the same values are
+    # reused on a re-scaffold instead of silently producing a second, conflicting mod
+    # identity. See build_cfg().
+    cfg = build_cfg(answers, bases, args.unpacked)
+    name, parent = cfg["name"], cfg["parent"]
     out = Path(args.config)
     if out.exists() and not args.force:
         raise ForgeError(f"{out} already exists. Re-running init would mint a NEW mod "
@@ -1175,6 +1180,125 @@ registered at runtime. This mod ships no Lua and overrides no vanilla file.""")
     return 0
 
 
+PROBE_MD = """# Probe: {{NAME}}
+
+**Question this mod exists to answer:**
+
+> {{QUESTION}}
+
+## Why a probe and not a branch of the real mod
+
+An engine question asked inside a mod with twenty features has twenty candidate causes.
+This mod has ONE. If the observation is wrong here, the mechanic is wrong - not the
+interaction, not the ordering, not some other passive.
+
+⚠ **This does NOT remove the character reroll.** A subclass is chosen at character
+creation, so testing still costs a new character at level {{FIRST_LEVEL}}. What it removes is
+everything else: the full gate suite, the other features, and the doubt about which of
+them caused what. Say "a probe confirmed X" only about the thing this mod contains.
+
+## Run it
+
+```
+cd {{NAME}} && ./build.ps1
+```
+
+Then launch, make a {{PARENT}}, take {{NAME}} at level {{FIRST_LEVEL}}, and observe.
+
+## Record the result
+
+| | |
+|---|---|
+| Question | {{QUESTION}} |
+| Observed | *(fill in: exactly what happened, not what you concluded)* |
+| Verdict | CONFIRMED / REFUTED / INCONCLUSIVE |
+| Date | |
+
+⭐ **A REFUTED probe is worth more than a confirmed one** - it corrects a model that was
+about to be built on. Write the observation down before the interpretation, and put the
+finding in `docs/bg3-mechanics/` so the next session does not re-ask it.
+"""
+
+
+def probe(args) -> int:
+    """Emit the SMALLEST loadable mod that asks one engine question.
+
+    ⭐ WHY THIS COMMAND EXISTS. Live Pass 35 was the stated next action for two whole
+    sessions and did not happen, because verifying one assumption cost a full Warpblade
+    build, a launch, and a reroll - and then the answer was confounded by twenty other
+    features. Mined from the "small isolated test mods" idea in the 2026-09-01 directive
+    (work-offline item 107c), which was taken precisely because it attacks the reason the
+    top queue item keeps not happening.
+
+    ⚠ IT IS HONEST ABOUT WHAT IT DOES NOT FIX. A subclass is chosen at character
+    creation, so the reroll remains. Claiming otherwise would be the "hallucinate
+    success" failure the same directive warns about. What it removes is the twenty
+    confounders and the full gate suite.
+    """
+    classes = read_classes(Path(args.unpacked))
+    bases = base_classes(classes)
+    cfg = build_cfg({
+        "name": args.name,
+        "parent": args.parent,
+        "author": "probe",
+        "description": f"Single-question probe: {args.question}",
+        "feature_name": f"{args.name} Probe Feature",
+        "first_level": args.level,
+    }, bases, args.unpacked)
+    cfg["question"] = args.question
+
+    root = Path(args.out or args.name)
+    if root.exists() and any(root.iterdir()) and not args.force:
+        raise ForgeError(f"{root} exists and is not empty. Pass --force to overwrite.")
+
+    # Caller-supplied stats bodies replace the placeholder ones. Everything else is the
+    # ordinary scaffold, because the plumbing is not what is under test - and a probe
+    # built on different plumbing than the real mod would answer a different question.
+    overrides = {}
+    if args.passive:
+        overrides["Public/{{NAME}}/Stats/Generated/Data/Passive.txt"] = \
+            Path(args.passive).read_text(encoding="utf-8")
+    if args.spell:
+        overrides["Public/{{NAME}}/Stats/Generated/Data/Spell_Target.txt"] = \
+            Path(args.spell).read_text(encoding="utf-8")
+
+    written = []
+    for rel_t, body_t in FILES + [("PROBE.md", PROBE_MD)]:
+        rel = fill(rel_t, cfg)
+        raw = overrides.get(rel_t, body_t)
+        # An override is VERBATIM: it is the thing under test, so a stray {{TOKEN}} in it
+        # must not be silently substituted into something that looks fine.
+        body = raw if rel_t in overrides else fill(raw, cfg)
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(body, encoding="utf-8")
+        written.append(p)
+
+    (root / "forge.json").write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+
+    for p in written:
+        if p.suffix.lower() in (".lsx", ".xml"):
+            try:
+                ET.parse(p)
+            except ET.ParseError as e:
+                raise ForgeError(f"generated {p} is not well-formed XML: {e}. This is a "
+                                 f"bug in forge.py, not in your input.")
+    write_class_icon(root, cfg["name"])
+
+    print(f"\nprobe '{cfg['name']}' written to {root}/ - {len(written)} file(s)")
+    print(f"  question: {args.question}")
+    print(f"  {cfg['parent']} subclass, offered at level {cfg['first_level']}")
+    if overrides:
+        print(f"  {len(overrides)} stats file(s) taken VERBATIM from your input")
+    else:
+        print("  no --passive/--spell given, so this probes the PLUMBING only: "
+              "does a minimal subclass load and appear at all?")
+    print("\n⚠ This does not remove the reroll - a subclass is picked at character "
+          "creation.\n  It removes the other twenty features as candidate causes.")
+    print(f"\nnext: cd {root} && ./build.ps1, then read PROBE.md and fill in the result.")
+    return 0
+
+
 def cmd_classes(args) -> int:
     classes = read_classes(Path(args.unpacked))
     bases = base_classes(classes)
@@ -1207,6 +1331,18 @@ def main() -> int:
     s.add_argument("--out", help="output directory (default: the mod name)")
     s.add_argument("--force", action="store_true", help="overwrite a non-empty directory")
 
+    pr = sub.add_parser("probe", help="smallest loadable mod that asks ONE engine question")
+    pr.add_argument("--name", required=True, help="probe mod name (becomes the folder)")
+    pr.add_argument("--question", required=True,
+                    help="the single question this mod exists to answer, in one sentence")
+    pr.add_argument("--parent", default="Fighter", help="parent class (default Fighter)")
+    pr.add_argument("--level", type=int, default=3,
+                    help="class level the subclass is offered at (default 3)")
+    pr.add_argument("--passive", help="file whose contents REPLACE Passive.txt verbatim")
+    pr.add_argument("--spell", help="file whose contents REPLACE Spell_Target.txt verbatim")
+    pr.add_argument("--out", help="output directory (default: the probe name)")
+    pr.add_argument("--force", action="store_true", help="overwrite a non-empty directory")
+
     a = ap.parse_args()
     try:
         if a.cmd == "doctor":
@@ -1217,6 +1353,8 @@ def main() -> int:
             return init(a)
         if a.cmd == "scaffold":
             return scaffold(a)
+        if a.cmd == "probe":
+            return probe(a)
     except ForgeError as e:
         print(f"\nrefusing: {e}\n", file=sys.stderr)
         return 2
