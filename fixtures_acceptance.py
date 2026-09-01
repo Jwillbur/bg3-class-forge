@@ -187,7 +187,13 @@ check("[xml-malformed] the closing tag is the only thing missing",
 # ---- the fixtures must not look like a shippable mod -----------------------------
 # Derived from the scaffold, not typed - this set has grown twice in one afternoon
 # (DESIGN.md, then build.ps1) and each time the literal was the thing that broke.
-ROOT_FILES = {"forge.json"} | {r for r, _ in _F.FILES if "/" not in r}
+# ⚠ The rule is about GAME data, not about depth. It was `"/" not in r`, which read
+# "lives at the root" and happened to coincide with "is not game data" only while every
+# non-game file was a root file. tools/validate.py joined the scaffold on 2026-09-01 so
+# a generated mod starts with a validator, and the coincidence broke: a TOOL in a
+# subfolder got flagged as an unnamespaced game file. Derive the real distinction.
+GAME_DIRS = ("Mods/", "Public/", "Localization/")
+ROOT_FILES = {"forge.json"} | {r for r, _ in _F.FILES if not r.startswith(GAME_DIRS)}
 check("fixtures are not mistakable for a real mod",
       all(NAME in k or "Localization" in k or k in ROOT_FILES for k in healthy),
       f"every GAME file must be namespaced under the fixture name; only {ROOT_FILES} "

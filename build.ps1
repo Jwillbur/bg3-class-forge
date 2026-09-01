@@ -47,6 +47,9 @@ param(
     # Explicit override for the LSLib Divine.exe. Highest-priority source in the
     # discovery order below; use it when you have several LSLib builds around.
     [string]$DivinePath,
+    # Allow a workspace with no tools/validate.py to build anyway. Without this a
+    # missing validator is a hard failure - see the gate at step 0.
+    [switch]$AllowMissingValidator,
     [switch]$SkipPack,
     [switch]$SkipDeploy,
     [switch]$SkipValidate,
@@ -54,6 +57,47 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# --- validation provenance ---------------------------------------------------
+# ⚠ A .pak SITTING ON DISK IS NOT EVIDENCE. Raised by the 2026-08-25 review: days
+# later nobody can tell whether a pak was validated, merely packed, or actually
+# playtested, and the difference is the whole question. Every gate below records
+# its own verdict here and the build writes dist/validation-report.json at the end.
+# A SKIPPED gate is recorded as skipped WITH ITS REASON - never omitted, because an
+# absent line reads like a pass to anyone scanning the file.
+$script:GateResults = [ordered]@{}
+$script:GateSkips   = @()
+
+function Write-Provenance {
+    # Called at EVERY successful exit, not just the last one. The first version sat
+    # after the deploy step, so -SkipDeploy returned before it and a perfectly good
+    # build produced no report at all - caught by build_acceptance.py, which is the
+    # entire reason that harness exists. A record that is missing on one legitimate
+    # path is worse than no record, because its absence looks like a failed build.
+    if (-not $script:ModName -or -not $script:OutPak) { return }
+    $dir = Join-Path $Workspace 'dist'
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+    $report = [ordered]@{
+        mod          = $script:ModName
+        pak          = $script:OutPak
+        source_root  = "$Workspace"
+        divine       = "$script:Divine"
+        validated_at = (Get-Date).ToString('o')
+        checks       = $script:GateResults
+        skips        = $script:GateSkips
+        note         = ("Tracked gates only. A gate absent from 'checks' is NOT tracked " +
+                        "yet and must not be read as a pass. Nothing here is evidence " +
+                        "the mod was PLAYED - that is a human watching the game.")
+    }
+    # ⚠ NOT Set-Content -Encoding utf8. On Windows PowerShell 5.1 that writes a BOM,
+    # and a BOM at the head of a .json makes strict parsers throw before they read a
+    # byte of it - Python's json.loads among them. This file exists to be read by
+    # other tools, so it is written as BOM-less UTF-8 and a control asserts that.
+    [IO.File]::WriteAllText((Join-Path $dir 'validation-report.json'),
+                            ($report | ConvertTo-Json -Depth 5),
+                            (New-Object Text.UTF8Encoding($false)))
+    Write-Host "  provenance -> dist/validation-report.json" -ForegroundColor DarkGray
+}
 
 # ---------------------------------------------------------------- CONFIG ----
 # Divine is DISCOVERED, not hardcoded. The old single literal path was the first
@@ -150,7 +194,23 @@ if (-not $SkipValidate) {
     Write-Host "[0/6] Validating against shipped game data..." -ForegroundColor Yellow
     $validator = Join-Path $Workspace 'tools\validate.py'
     if (-not (Test-Path $validator)) {
-        Write-Host "  validate.py not found - skipping" -ForegroundColor DarkYellow
+        # ⚠ THIS USED TO BE A SKIP, AND THAT MADE THE GATE OPTIONAL IN PRACTICE.
+        # Flagged by an outside review (2026-08-25): the framework "documents a
+        # strong validation regime, but the generated mod does not actually receive
+        # a validator", so a freshly scaffolded mod packed with no mechanical checks
+        # at all while the build printed a reassuring line. forge.py now scaffolds a
+        # starter tools/validate.py, so an absent one means something was deleted or
+        # the workspace is not a forge mod - both worth stopping for.
+        if ($AllowMissingValidator) {
+            Write-Host "  validate.py not found - skip EXPLICITLY allowed" -ForegroundColor DarkYellow
+            $script:GateResults['project_validate_py'] = 'skipped'
+            $script:GateSkips += "validate.py absent, -AllowMissingValidator passed"
+        } else {
+            throw ("tools/validate.py not found in $Workspace. The build refuses without a " +
+                   "project validator. Scaffolds get one from forge.py; pass " +
+                   "-AllowMissingValidator only for a plumbing-only workspace, or " +
+                   "-SkipValidate to override the gate deliberately.")
+        }
     } else {
         & py $validator --skip-freshness
         if ($LASTEXITCODE -ne 0) {
@@ -267,6 +327,8 @@ if ($missing.Count -gt 0) {
     throw "$($missing.Count) handle(s) referenced but not declared in Localization."
 }
 Write-Host "  ok - $($declared.Count) handles declared, all references resolve" -ForegroundColor Green
+$script:GateResults['xml_wellformed']       = 'pass'
+$script:GateResults['localization_handles'] = 'pass'
 
 if ($SkipPack) { Write-Host "`n-SkipPack set. Stopping after checks.`n" -ForegroundColor Cyan; return }
 
@@ -305,11 +367,26 @@ function Test-DivineLoca {
 
 # Pick the first candidate that PASSES the probe, not merely the first that exists.
 # Existence was never the question - Vortex's divine.exe exists and is wrong.
-$Divine = $null
-foreach ($c in $DivineCandidates) {
-    if (-not $c -or -not (Test-Path $c)) { continue }
-    if (Test-DivineLoca $c) { $Divine = $c; break }
-    Write-Host "  rejected (cannot convert-loca): $c" -ForegroundColor DarkYellow
+#
+# ⚠ AN EXPLICIT -DivinePath IS STRICT: it is probed, and if it fails the build stops.
+# It does NOT fall through to discovery. Caught by build_acceptance.py, which passed a
+# deliberately broken Divine, watched the build quietly fall back to this machine's
+# real one, and PASS - so the negative control proved nothing and would have gone on
+# proving nothing. Silently using a different tool than the one you were handed is its
+# own bug, separate from the test that found it.
+if ($DivinePath) {
+    if (-not (Test-Path $DivinePath)) { throw "-DivinePath '$DivinePath' does not exist." }
+    if (-not (Test-DivineLoca $DivinePath)) {
+        throw "-DivinePath '$DivinePath' cannot convert localisation (convert-loca failed, produced nothing, or reported [FATAL]). Refusing to fall back to another Divine when one was named explicitly."
+    }
+    $Divine = $DivinePath
+}
+if (-not $Divine) {
+    foreach ($c in $DivineCandidates) {
+        if (-not $c -or -not (Test-Path $c)) { continue }
+        if (Test-DivineLoca $c) { $Divine = $c; break }
+        Write-Host "  rejected (cannot convert-loca): $c" -ForegroundColor DarkYellow
+    }
 }
 if (-not $Divine) {
     throw ("No usable LSLib Divine.exe found. Tried:`n  " +
@@ -335,6 +412,8 @@ foreach ($f in $locaFiles) {
     if ($di.LastWriteTime -lt $f.LastWriteTime) { throw "$($di.Name) is older than its source $($f.Name) - stale artifact, not a fresh conversion." }
     Write-Host "  $($f.Name) -> $($di.Name) ($($di.Length) bytes)" -ForegroundColor Green
 }
+
+$script:GateResults['loca_compiled'] = 'pass'
 
 # --- 4. stage + pack ---------------------------------------------------------
 # Pack from a STAGING copy, not the workspace. Divine packs everything under
@@ -371,9 +450,34 @@ if ($png.Count -gt 0) {
 
 # A staging step that silently stages nothing would pack an empty mod, and
 # "0 errors" over an empty pak is the failure this repo spent 2026-08-29 finding.
-$staged = (Get-ChildItem $stage -Recurse -File).Count
-if ($staged -lt 20) {
-    throw "Only $staged file(s) staged - that is not a Warpblade build. Refusing to pack."
+#
+# ⚠ THIS GUARD USED TO BE `-lt 20` WITH THE MESSAGE "that is not a Warpblade build",
+# inside the ONE build script that is supposed to serve every mod made with this
+# toolchain. A freshly scaffolded mod ships around ten files, so the shared script
+# refused every small mod on a magic number calibrated to one project - and told its
+# author their mod was not Warpblade. Found by build_acceptance.py on its first run,
+# not by reading; the outside review missed it too.
+#
+# The honest invariant is a COMPARISON, not a constant: the stage must contain what
+# the source says it should. That catches "staged nothing" and "staged half" alike,
+# and it cannot go stale as a mod grows.
+$staged   = (Get-ChildItem $stage -Recurse -File).Count
+$expected = @(
+    Get-ChildItem $Workspace -Recurse -File |
+    Where-Object {
+        $rel = $_.FullName.Substring($Workspace.Length).TrimStart('\', '/')
+        ($rel -like 'Mods*' -or $rel -like 'Public*' -or $rel -like 'Localization*') -and
+        $_.Extension -ne '.png' -and $_.Extension -ne '.xml'
+    }
+).Count
+# The .loca files are ALREADY counted above: conversion happens at step 3, before
+# staging, so they exist in the workspace by now. Adding them again double-counted
+# and made the guard demand one more file than any mod could ever stage.
+if ($staged -lt 1) {
+    throw "Nothing staged. Refusing to pack an empty $ModName.pak."
+}
+if ($expected -gt 0 -and $staged -lt $expected) {
+    throw "Staged $staged file(s) but the source has $expected shippable file(s). Something was dropped between the workspace and the stage; refusing to pack a partial $ModName.pak."
 }
 Write-Host "  staged $staged files" -ForegroundColor Green
 
@@ -437,6 +541,7 @@ if (Test-Path $rc) {
 
 # --- 6. deploy OUTSIDE the MSIX container, then verify -----------------------
 if ($SkipDeploy) {
+    Write-Provenance
     Write-Host "`n-SkipDeploy set. Pak is at $OutPak but was NOT installed.`n" -ForegroundColor Cyan
     return
 }
@@ -493,7 +598,10 @@ if (Test-Path $pa) {
         throw "The DEPLOYED pak does not match the source. The game would load something else."
     }
     Write-Host "  the game will load exactly what was just built" -ForegroundColor Green
+    $script:GateResults['deployed_pak_matches_source'] = 'pass'
 }
+
+Write-Provenance
 
 Write-Host "`nDone. $ModName.pak is installed and confirmed present." -ForegroundColor Cyan
 Write-Host "modsettings.lsx already lists the load order, so BG3 Mod Manager is NOT" -ForegroundColor Cyan
