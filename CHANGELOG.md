@@ -10,6 +10,94 @@ landed upstream**, which is why a release here can be days newer than the last c
 
 ---
 
+## 2026-08-31
+
+- **The build now audits the PAK, not just the source.** Every gate the forge runs read
+  the workspace — the files you wrote. Nothing read the artifact the game actually
+  opens. The build had been printing an archive listing at the pack step for weeks and
+  **nothing consumed it**, which is the same shape as a drift report nobody reads: a
+  check whose output no one reads is not a check, it just looks like one on the way
+  past.
+
+  A new `tools/pak_audit.py` in the parent repo extracts the built pak and asserts four
+  things against source — every file that should ship did, nothing extra rode along,
+  every shipped file is byte-identical, and `dist/` matches the deployed copy. The
+  staging contract is expressed as a RULE (`SHIP_DIRS`, `NEVER_SHIP`) rather than a
+  copied file list, so it and `build.ps1` cannot drift apart quietly.
+
+  It caught an ordering bug in its own wiring on the first build: it audited the
+  DEPLOYED pak *before* the deploy step, comparing against the previous build. Now split
+  into `--dist` before the deploy and `--deployed` after — which is also the only
+  ordering where "is the game running what we just built" means anything. That question
+  was previously answered by checking a file with the right NAME existed.
+
+- **The build now checks whether the mod tells the player the truth.** Every gate here
+  asks whether a mod WORKS; none asked whether it is HONEST, and a tooltip is the only
+  contract a player gets. A validator is perfectly happy with a spell that promises a
+  status its functors never apply, because both halves are well-formed on their own.
+
+  A new `tools/tooltip_audit.py` in the parent repo compares the declared tooltip fields
+  against the real `ApplyStatus` and `DealDamage` calls across all four functor blocks,
+  and blocks the build. Two real findings on the first clean run of the reference mod,
+  both a description saying something the data did not do.
+
+## 2026-08-30
+
+- **`build.ps1` had a literal TAB character where an escaped `t` was intended**, so a
+  `Test-Path` guard looked for a mangled path that never exists — and the tool-audit
+  step it guarded **silently never ran inside the build**. Rewritten with forward
+  slashes throughout, which carry no escape meaning and cannot be re-corrupted the same
+  way. Worth stating plainly for anyone adapting this script: a path guard that fails
+  closed and prints nothing is indistinguishable from a step that passed.
+
+- **Three checks added to the pipeline**, in the order they landed: a fight simulator as
+  a REPORTING step, its `--lint` half as a BLOCKING one, and a tool audit as reporting.
+  The split is deliberate and is the rule to copy, not the tools. The simulator's
+  scenarios encode *desired behaviour*, so a known-and-accepted defect would wedge every
+  build — which is how a gate gets `-Skip`'d within a week and then guards nothing. Its
+  lint rule encodes no design opinion, so there is nothing to legitimately disagree with
+  and it blocks.
+
+- **The self-test is skipped when its fingerprint is unchanged**, saving roughly two
+  minutes per rebuild. The stamp hashes every `.py` the suite runs OR exercises, so a
+  tool edit invalidates it — verified in both directions. **Only a GREEN stamp is
+  skippable**, so a failing suite can never be cached into a pass.
+
+## 2026-08-30 (earlier) — `load_order_audit.py`
+
+- **Parallel pak reads: 12.3s → 2.2s, a 5.5x end-to-end speedup.** The measurement came
+  first and it refuted the idea it was meant to support. Divine process start is 48ms of
+  a 71ms list-package call, so the "spawning is the cost" diagnosis was right — but the
+  audit makes 2–3 calls per pak, about 126 spawns of a 12.3s run, and an in-process
+  LSLib binding would have bought only ~2x. Threading the spawns we already make
+  measured 6.4x at 8 workers and 9.0x at 16, **with no pythonnet, no .NET coupling and
+  no second code path bound to an assembly version**. Threads rather than processes,
+  because the work is a blocking subprocess wait. `--jobs 1` restores serial.
+
+- **A determinism bug the parallel run exposed, and the more valuable half of that
+  work.** `audit()` iterated `set(entries)` and set-derived `.items()`, and Python
+  randomises string hashing per process — so **two identical SERIAL runs already
+  disagreed on finding order**, verified before any change was made. An audit that
+  reshuffles cannot be diffed against yesterday's. Five iterations sorted; serial and
+  parallel output are now byte-identical to each other and to themselves. The
+  determinism fixture's names are chosen so sorted order differs from insertion order,
+  because a fixture that passes either way proves nothing.
+
+- **Duplicate and cycle detection**, mined from a competing auditor
+  (`Nemix3D/bg3-load-order-optimizer`) — two checks we genuinely lacked out of six
+  sources reviewed.
+  - **Duplicates:** position is built by `enumerate()`, so a mod listed twice in
+    `modsettings` collapses to its LAST index, and every ordering verdict in the file is
+    then measured against a position the first copy does not have. Counted by name and
+    by uuid separately.
+  - **Cycles:** "loads later" is a per-edge verdict, and a cycle is the one shape where
+    every edge reports cleanly and no order satisfies them all.
+
+- **Still not a sorter, and that is a decision.** A well-resourced competitor
+  (`Moonie8t7/VOLO`) trains its masterlist on 81 real load orders across 10,113 mods and
+  reports 65.5% agreement against a 50.7% random baseline. A sorter that good is right
+  about two thirds of the time. We should not ship a worse one as a side feature.
+
 ## 2026-08-29 (later)
 
 - **`build.ps1` now runs `feature_sig.py`.** Its own header comment had named that tool
