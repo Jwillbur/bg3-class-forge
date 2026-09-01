@@ -44,6 +44,9 @@ param(
     # mod made with this toolchain instead of a frozen copy per project - a copy stops
     # receiving fixes the moment it is made.
     [string]$Workspace,
+    # Explicit override for the LSLib Divine.exe. Highest-priority source in the
+    # discovery order below; use it when you have several LSLib builds around.
+    [string]$DivinePath,
     [switch]$SkipPack,
     [switch]$SkipDeploy,
     [switch]$SkipValidate,
@@ -53,7 +56,20 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # ---------------------------------------------------------------- CONFIG ----
-$Divine    = "C:\Modding\tools\lslib\Packed\Tools\Divine.exe"   # LSLib v1.20.4
+# Divine is DISCOVERED, not hardcoded. The old single literal path was the first
+# thing that broke for an outside user of this repo (deep-analysis report,
+# 2026-08-25): their LSLib lived at C:\Tools\LSLib and the build refused, telling
+# them to edit a script they had just cloned. Order is most-specific first.
+$DivineCandidates = @(
+    $DivinePath,
+    $env:BG3_DIVINE,
+    (Get-Command divine.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source),
+    "C:\Modding\tools\lslib\Packed\Tools\Divine.exe",     # LSLib v1.20.4, this machine
+    "C:\Tools\LSLib\Packed\Tools\Divine.exe"
+)
+# NOTE: the winner is chosen at step 3 by PROBE, not here by existence - see
+# Test-DivineLoca. Nothing before step 3 uses Divine, so there is deliberately no
+# selection at config time; a second source of truth would only drift.
 if ([string]::IsNullOrWhiteSpace($Workspace)) { $Workspace = $PSScriptRoot }
 if (-not (Test-Path $Workspace)) { throw "no such workspace: $Workspace" }
 
@@ -254,15 +270,70 @@ Write-Host "  ok - $($declared.Count) handles declared, all references resolve" 
 
 if ($SkipPack) { Write-Host "`n-SkipPack set. Stopping after checks.`n" -ForegroundColor Cyan; return }
 
-if (-not (Test-Path $Divine)) { throw "Divine.exe not found at '$Divine'. Edit `$Divine at the top of this script." }
-
 # --- 3. localisation ---------------------------------------------------------
+# ⚠ THE FAILURE THIS SECTION EXISTS TO STOP, observed by an outside user on
+# 2026-08-25 and reported with evidence: Vortex ships its own divine.exe that does
+# NOT support convert-loca. It printed "[FATAL] Value convert-loca is not allowed
+# for argument a(action)" and EXITED 0. The build trusted the exit code, packed on,
+# and produced a .pak with no compiled .loca - a mod in which every string in the
+# game renders as a raw handle, from a build that reported success.
+#
+# So an exit code is not evidence here. Three things are: a Divine that PROVES it
+# can convert a synthetic file before the real mod is touched, a destination file
+# that exists and is non-empty, and one that is NEWER than its source so a stale
+# artifact from a previous run cannot be mistaken for a fresh one.
 Write-Host "[3/6] Compiling localisation..." -ForegroundColor Yellow
+
+function Test-DivineLoca {
+    # Probe: can this exe actually convert a loca file? Returns $true/$false.
+    param([string]$Exe)
+    if (-not $Exe -or -not (Test-Path $Exe)) { return $false }
+    $probe = Join-Path ([IO.Path]::GetTempPath()) ("forge_probe_" + [guid]::NewGuid().ToString('N'))
+    $src = "$probe.xml"; $dst = "$probe.loca"
+    try {
+        Set-Content -LiteralPath $src -Encoding utf8 -Value @'
+<?xml version="1.0" encoding="utf-8"?>
+<contentList><content contentuid="hforgeprobe">probe</content></contentList>
+'@
+        $out = & $Exe -g bg3 -a convert-loca -s $src -d $dst
+        if ($LASTEXITCODE -ne 0) { return $false }
+        if ($out -and ($out -join "`n") -match '\[FATAL\]') { return $false }
+        return ((Test-Path $dst) -and ((Get-Item $dst).Length -gt 0))
+    } catch { return $false }
+      finally { Remove-Item -LiteralPath $src, $dst -ErrorAction SilentlyContinue }
+}
+
+# Pick the first candidate that PASSES the probe, not merely the first that exists.
+# Existence was never the question - Vortex's divine.exe exists and is wrong.
+$Divine = $null
+foreach ($c in $DivineCandidates) {
+    if (-not $c -or -not (Test-Path $c)) { continue }
+    if (Test-DivineLoca $c) { $Divine = $c; break }
+    Write-Host "  rejected (cannot convert-loca): $c" -ForegroundColor DarkYellow
+}
+if (-not $Divine) {
+    throw ("No usable LSLib Divine.exe found. Tried:`n  " +
+           (($DivineCandidates | Where-Object { $_ }) -join "`n  ") +
+           "`nSet one with -DivinePath <path> or `$env:BG3_DIVINE. " +
+           "Note that Vortex's bundled divine.exe cannot convert localisation and is rejected on purpose.")
+}
+Write-Host "  divine: $Divine" -ForegroundColor DarkGray
+
 foreach ($f in $locaFiles) {
     $dest = [IO.Path]::ChangeExtension($f.FullName, 'loca')
-    & $Divine -g bg3 -a convert-loca -s $f.FullName -d $dest
-    if ($LASTEXITCODE -ne 0) { throw "convert-loca failed for $($f.Name)" }
-    Write-Host "  $($f.Name) -> $(Split-Path $dest -Leaf)" -ForegroundColor Green
+    # Delete first: without this a failed conversion leaves the PREVIOUS build's
+    # .loca in place and every check below passes on a stale artifact.
+    Remove-Item -LiteralPath $dest -ErrorAction SilentlyContinue
+    $out = & $Divine -g bg3 -a convert-loca -s $f.FullName -d $dest
+    if ($LASTEXITCODE -ne 0) { throw "convert-loca failed for $($f.Name) (exit $LASTEXITCODE)" }
+    if ($out -and ($out -join "`n") -match '\[FATAL\]') {
+        throw "convert-loca reported [FATAL] for $($f.Name) while exiting 0. Output:`n$($out -join "`n")"
+    }
+    if (-not (Test-Path $dest)) { throw "convert-loca produced no .loca for $($f.Name). The pak would ship with unresolved handles." }
+    $di = Get-Item $dest
+    if ($di.Length -le 0) { throw "convert-loca produced an EMPTY .loca for $($f.Name)." }
+    if ($di.LastWriteTime -lt $f.LastWriteTime) { throw "$($di.Name) is older than its source $($f.Name) - stale artifact, not a fresh conversion." }
+    Write-Host "  $($f.Name) -> $($di.Name) ($($di.Length) bytes)" -ForegroundColor Green
 }
 
 # --- 4. stage + pack ---------------------------------------------------------
