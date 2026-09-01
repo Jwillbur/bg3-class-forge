@@ -307,7 +307,11 @@ import sys as _sys  # noqa: E402
 import tempfile as _tf  # noqa: E402
 
 FORGE_DIR = Path(__file__).resolve().parent
-_unpacked = Path(r"C:\Modding\bg3_unpacked")
+# ⚠ F.UNPACKED, not a literal. forge.py and modconfig.py both honour $BG3_UNPACKED and
+# this harness did not, so on any machine whose game data lives elsewhere the scaffold
+# controls SILENTLY SKIPPED while the suite still printed green. A control that skips
+# itself on someone else's machine is worse than one that fails there.
+_unpacked = F.UNPACKED
 if _unpacked.is_dir():
     d = Path(_tf.mkdtemp())
     (d / "a.json").write_text(_json.dumps({

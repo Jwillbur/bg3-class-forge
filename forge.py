@@ -872,6 +872,9 @@ def check_using(trees) -> None:
 
 
 def main() -> int:
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print(__doc__)
+        return 0
     strict = "--warn" in sys.argv
     name = cfg().get("name", "?")
     trees = parse_all()
