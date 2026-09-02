@@ -420,15 +420,21 @@ These are loose `.DDS` files, and **the folder decides the size**, not the filen
 ```
 Assets/ClassIcons/<Name>                 300 x 300   + metadata
 Assets/ClassIcons/hotbar/<Name>          140 x 140   + metadata
-AssetsLowRes/ClassIcons/<Name>           150 x 150   files only, NO metadata
-AssetsLowRes/ClassIcons/hotbar/<Name>     70 x  70   files only, NO metadata
+AssetsLowRes/ClassIcons/<Name>           152 x 152   files only, NO metadata
+AssetsLowRes/ClassIcons/hotbar/<Name>     72 x  72   files only, NO metadata
 ```
 
 All four, same base name. Miss the low-res pair and it looks fine until someone plays on
 lower settings. Add metadata to the low-res ones and you get errors.
 
 The character-sheet icon and the hotbar icon are **different pictures**, not one resized —
-the hotbar one usually needs the background and any frame stripped so it reads at 70px.
+the hotbar one usually needs the background and any frame stripped so it reads at 72px.
+
+⚠ **The low-res pair is 152/72, not 150/70.** This file said 150/70 until
+2026-09-02 while `forge.py` had emitted 152/72 since the first mod that shipped. The
+code is the one that has been in a working game, so the code won. `icon_audit.py` and
+`icon_build.py` both import `forge.py`’s `ICON_SIZES` rather than retyping them, so
+there is now exactly one copy of these four numbers.
 
 ### Spell / passive icons — an atlas, not loose files
 Vanilla ships **no loose files for spell icons at all**. Only 64×64 tiles inside an atlas.
