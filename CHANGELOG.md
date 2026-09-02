@@ -10,6 +10,28 @@ landed upstream**, which is why a release here can be days newer than the last c
 
 ---
 
+## 2026-09-02
+
+**The icon and VFX gaps are now tooling, not prose.**
+
+- **`icon_audit.py` (new)** - gates PART 3.5. The three answers that cost a day
+  (UV map `GUI/Icons_Skills.lsx`, registration `Content/UI/[PAK]_UI/Icons_<Mod>.lsf`,
+  uppercase `.DDS`) were documentation until now. Sizes are IMPORTED from
+  `forge.py` rather than retyped - `FORGE.md` says 150/70 and the scaffolder has
+  emitted 152/72 since the first shipped mod, so a third copy was not wanted.
+- **`icon_build.py` (new)** - one source picture to the four DDS sizes plus a
+  true-scale preview. `FORGE.md` said "what you should build is the processing";
+  four mods went by without anyone building it.
+- **`corpus_index.py`, `anim_textkeys.py`, `fx_audit.py` moved in from a mod.**
+  They were never mod-specific in substance - three hardcoded paths were all that
+  tied them down, and those now come from `modconfig`. The mod keeps thin shims so
+  `py tools/fx_audit.py` still works; the shims load the forge copy BY PATH,
+  because a plain re-export imports the shim itself.
+
+⚠ **A `#!/usr/bin/env python` shebang made `py` select Python 3.11**, where
+Pillow is not installed, and the error said "no module named PIL" while a
+terminal `py -c` import of PIL succeeded. No other forge tool carries a shebang.
+
 ## 2026-09-01
 
 - **⭐ `pak_audit.py` is part of the forge now, not part of one mod.** It lived in

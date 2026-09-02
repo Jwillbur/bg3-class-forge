@@ -18,6 +18,11 @@ py forge.py scaffold    # -> a complete, loadable mod tree
 | `load_order_audit.py` | Audits a BG3 **load order** against what the installed paks actually contain - dependencies, file conflicts, stats-entry conflicts, and which mods patch which. Answers "does my mod fight anything the player has installed" with measurement. |
 | `fixtures/` | Nine mods broken on purpose, one defect each, plus the healthy control. **All nine are caught and the control stays clean** — measured, not assumed. |
 | `make_fixtures.py` | Regenerates them from the templates above, so they cannot drift into testing a mod shape nothing produces any more. |
+| `icon_audit.py` | Gates the icon wiring that PART 3.5 spends two pages on - all four sizes present and correct, uppercase `.DDS`, no metadata on the low-res pair, the UV-map and registration paths a working mod actually uses. Prose is not a gate. |
+| `icon_build.py` | One source picture -> the four DDS files + a **true-scale preview**, so the 72px tile can be judged without launching the game. It does not make art; hand it art. |
+| `corpus_index.py` | Indexes every shipped stats entry and LSX node. Answers "does this functor exist, and what does a real call look like" from ground truth. |
+| `anim_textkeys.py` | Indexes the named moments inside every shipped animation clip, per animation slot. |
+| `fx_audit.py` | Audits VFX and SFX: an effect GUID or sound name no vanilla file defines, a field left inherited so a Force cantrip swings a mundane sword, and **an effect bound to a text key that clip does not have** - the silent one. |
 | `build.ps1` | The real build script for every mod made with this toolchain. Each mod gets a shim that finds it. |
 
 ---
