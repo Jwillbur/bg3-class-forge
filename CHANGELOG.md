@@ -10,6 +10,34 @@ landed upstream**, which is why a release here can be days newer than the last c
 
 ---
 
+## 2026-09-01
+
+- **⭐ `pak_audit.py` is part of the forge now, not part of one mod.** It lived in
+  `bg3/Warpblade/tools/`, so the check that answers *"is what shipped what we wrote?"*
+  gated exactly one mod. Every scaffolded mod is gated by it from this release.
+- **⚠ Moving it exposed a real bug class, and it is worth naming: a shared tool that
+  resolves its target from `cwd` or from a hardcoded directory depth audits the wrong
+  thing silently.** The mod-local version located the workspace with
+  `Path(__file__).resolve().parents[3]`, which only holds inside the repo it was written
+  in. The tool now DISCOVERS a mod by its `forge.json`, and `$FORGE_CONFIG` overrides it.
+  A tool that names its mod is a tool that will one day audit somebody else's.
+- **`pak_audit` reports UNREADABLE as severity UNKNOWN and exits 2**, no longer as an
+  error. A pak the tool cannot open is not a pak that is wrong, and conflating them makes
+  a missing Divine look like a broken build.
+- **NEW `divine.py` - one probed Divine resolver.** `build.ps1` had trusted
+  `convert-loca`'s exit code, which Divine returns **0** for even when it converted
+  nothing. It now probes Divine's actual capability and verifies the artifact exists.
+  `-DivinePath` is honoured instead of silently falling through to discovery, so the
+  negative control now proves something.
+- **NEW `forge.py probe`** - scaffolds the smallest loadable mod that grants ONE named
+  passive or spell. The point is the bottleneck it attacks: verifying a single engine
+  assumption had been costing a full build, a launch and a character reroll, which is
+  why live verification kept not happening.
+- **NEW `build_acceptance.py` (26 controls)** - eight real builds driven against fake
+  Divine shims, so the build's own failure paths are exercised rather than assumed.
+
+---
+
 ## 2026-08-31
 
 - **The build now audits the PAK, not just the source.** Every gate the forge runs read
