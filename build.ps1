@@ -506,9 +506,18 @@ Write-Host "[5/6] Archive contents (expect Localization/, Mods/, Public/ at root
 # this is the only one that reads what the game will open.
 # BLOCKS, unlike the reporting audits: a pak that is not what the source says is never
 # an acceptable thing to ship, and there is no judgement call to disagree with.
+# Workspace copy first, then the shared one in forge/. Before 2026-09-01 only the
+# workspace was checked, so the newest gate in the repo protected exactly ONE mod
+# - the same gap the outside review had already found for validate.py.
 $pa = Join-Path $Workspace 'tools/pak_audit.py'
+if (-not (Test-Path $pa)) { $pa = Join-Path $PSScriptRoot 'pak_audit.py' }
 if (Test-Path $pa) {
     Write-Host "[5a/6] Verifying the built pak against its source..." -ForegroundColor Yellow
+    # ⚠ POINT IT AT THIS WORKSPACE. pak_audit now lives in forge/ and resolves the mod
+    # from the CWD, so without this it audits whatever forge.json is nearest the
+    # process - the framework repo, not the mod being built. $FORGE_CONFIG is the
+    # override modconfig documents for exactly this.
+    $env:FORGE_CONFIG = $ForgeJson
     & py $pa --dist
     if ($LASTEXITCODE -eq 2) {
         Write-Host "  pak audit could not run (no Divine) - UNKNOWN, not clean" -ForegroundColor DarkYellow
@@ -599,6 +608,7 @@ Write-Host "  verified on disk (report written from outside the container)" -For
 # gate here, because all of them read the source and the source is fine.
 if (Test-Path $pa) {
     Write-Host "[6b/6] Verifying the DEPLOYED pak..." -ForegroundColor Yellow
+    $env:FORGE_CONFIG = $ForgeJson
     & py $pa --deployed
     if ($LASTEXITCODE -eq 2) {
         Write-Host "  could not read the deployed pak - UNKNOWN, not clean" -ForegroundColor DarkYellow

@@ -86,11 +86,11 @@ PROFILE = LOCALAPP / "Larian Studios" / "Baldur's Gate 3" / "PlayerProfiles" / "
 MODS_DIR = LOCALAPP / "Larian Studios" / "Baldur's Gate 3" / "Mods"
 MODSETTINGS = PROFILE / "modsettings.lsx"
 
-DIVINE_CANDIDATES = [
-    Path(os.environ.get("BG3_DIVINE", "")),
-    Path(r"C:\Modding\tools\lslib\Packed\Tools\Divine.exe"),
-]
-
+# ⭐ ONE resolver, and it PROBES. This file used to carry its own candidate list with
+# no probe, falling back to shutil.which("divine.exe") - which returns VORTEX's divine on
+# any machine that has it. That binary exists, is on PATH, and cannot do the job. Three
+# copies of this logic existed on 2026-09-01 and only build.ps1 checked capability; the
+# lists had already drifted (only it knew C:\Tools\LSLib). See forge/divine.py.
 # Modules the base game always provides. A dependency on one of these is never a fault.
 BASE_MODULES = {"GustavDev", "Gustav", "Shared", "SharedDev", "GustavX", "Honour",
                 "HonourX", "ModBrowser", "Engine", "FW3", "DiceSet_01", "DiceSet_02",
@@ -108,12 +108,12 @@ class AuditError(RuntimeError):
     """Something the audit needs is missing. Say what; never carry on with a guess."""
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import divine as _divine  # noqa: E402
+
+
 def find_divine() -> Path | None:
-    for p in DIVINE_CANDIDATES:
-        if p and p.is_file():
-            return p
-    which = shutil.which("Divine") or shutil.which("divine.exe")
-    return Path(which) if which else None
+    return _divine.find_divine()
 
 
 # ------------------------------------------------------------- modsettings ---
