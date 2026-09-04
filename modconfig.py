@@ -95,6 +95,22 @@ class ModConfig:
 
     @property
     def corpus(self) -> Path:
+        """One corpus per MACHINE, not per mod.
+
+        Everything in it is derived from the game's unpacked data and nothing in it is
+        authored, so every mod on a machine builds a byte-identical copy. Warpblade and
+        Kiln each held 73 MB of the same `lsx_index.json`, and both were committed before
+        anyone noticed - GitHub's large-file warning is what noticed.
+
+        Override with BG3_CORPUS. Falls back to the mod's own folder only when the
+        unpacked data location is unknown, which is the case `doctor` already refuses.
+        """
+        env = os.environ.get("BG3_CORPUS")
+        if env:
+            return Path(env)
+        unpacked = self.data.get("unpacked")
+        if unpacked:
+            return Path(unpacked).parent / "bg3_corpus"
         return self.root / "corpus"
 
     @property
