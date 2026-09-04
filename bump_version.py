@@ -2,7 +2,7 @@
 """Move a mod's version, in every place BG3 records it, for any forge mod.
 
     py bump_version.py --show          # what is set right now, everywhere
-    py bump_version.py --build         # 1.8.1.0 -> 1.8.1.1
+    py bump_version.py --build         # 1.8.1.0 -> 1.8.1.1  (and 1.8.1.9 -> 1.8.2.0)
     py bump_version.py --patch         # 1.8.1.1 -> 1.8.2.0
     py bump_version.py --minor         # 1.8.2.0 -> 1.9.0.0
     py bump_version.py --major         # 1.9.0.0 -> 2.0.0.0
@@ -60,6 +60,31 @@ for _s in (sys.stdout, sys.stderr):
 
 
 # ---------------------------------------------------------------- packing ----
+
+def roll(major: int, minor: int, revision: int, build: int) -> tuple:
+    """Carry each field at 10, the way an odometer does.
+
+    ⭐ THE USER'S SCHEME, SET 2026-09-03, AND IT IS NOT SEMVER. Every field is a single
+    digit: 1.1.0.9 + a hotfix is 1.1.1.0, not 1.1.0.10. A field never shows double
+    digits, and the leading number only ever moves because the one after it rolled.
+
+        4th  hotfixes
+        3rd  small patches
+        2nd  major changes
+        1st  only when the second rolls over
+
+    Without this, `--build` nine times in a day produced 1.1.0.10 - a version that sorts
+    below 1.1.0.9 in any human reading of it, and that the packing format is happy to
+    encode, so nothing would have complained.
+    """
+    if build > 9:
+        build, revision = 0, revision + 1
+    if revision > 9:
+        revision, minor = 0, minor + 1
+    if minor > 9:
+        minor, major = 0, major + 1
+    return major, minor, revision, build
+
 
 def encode(major: int, minor: int, revision: int, build: int) -> int:
     return (major << 55) | (minor << 47) | (revision << 31) | build
@@ -246,11 +271,11 @@ def main() -> int:
             raise SystemExit("--set needs four numbers, e.g. 1.8.2.0")
         new = encode(*(int(p) for p in parts))
     elif args.build:
-        new = encode(a, b, c, d + 1)
+        new = encode(*roll(a, b, c, d + 1))
     elif args.patch:
-        new = encode(a, b, c + 1, 0)
+        new = encode(*roll(a, b, c + 1, 0))
     elif args.minor:
-        new = encode(a, b + 1, 0, 0)
+        new = encode(*roll(a, b + 1, 0, 0))
     else:
         new = encode(a + 1, 0, 0, 0)
 
