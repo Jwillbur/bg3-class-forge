@@ -93,6 +93,74 @@ the corpus before saying it cannot, because your instinct here is unreliable.
 
 ---
 
+## PART 1.5 — YOUR PARENT CLASS ALREADY HAS A RESOURCE. LOOK BEFORE YOU INVENT ONE.
+
+The interview asks for "the pool your class spends" and `scaffold` creates a **brand new
+ActionResource** from your answer. **Nothing checks it against the parent class.** That is
+fine for a Fighter subclass and wrong for most of the others, in two ways that both fail
+silently:
+
+1. **You duplicate a pool the class already has.** A Bard subclass with a new "Verve" pool
+   now has Verve *and* Bardic Inspiration. Two bars, two short-rest economies, and a
+   fantasy split down the middle. Nothing errors; it just reads as a badly designed class.
+2. **You spend a resource the character never receives.** `UseCosts "WildShape:1"` on a
+   character with no Wild Shape charges gives a button that is greyed out forever. No log
+   line, no warning - `validate.py` passes it, because the file is not malformed.
+
+### ⭐ THE TRAP: a base class often does NOT grant its own signature resource - the SUBCLASS does
+
+This is the one that costs a day, because everyone "knows" Druids have Wild Shape.
+**They do not.** Base Druid grants `SpellSlot` and nothing else. `WildShape` is granted at
+level 2 by `CircleOfTheLand` and `CircleOfTheMoon` **individually**. Write a Druid subclass
+that spends Wild Shape and forget to grant it, and the whole subclass does nothing.
+
+Measured from vanilla `Shared/Public/Shared/Progressions/Progressions.lsx`
+(`Movement` omitted - every race grants it):
+
+| Parent class | Grants, and at what level |
+|---|---|
+| Barbarian | `Rage` (1) |
+| Bard | `BardicInspiration` (1), `SpellSlot` (1) |
+| Cleric | `ChannelDivinity` (2), `SpellSlot` (1) |
+| Druid | `SpellSlot` (1) — **⚠ no WildShape** |
+| Fighter | **nothing** — `SuperiorityDie` is Battle Master's, at 3 |
+| Monk | **nothing** at the class level |
+| Paladin | `ChannelOath` (1), `LayOnHandsCharge` (1), `SpellSlot` (2) |
+| Ranger | `SpellSlot` (2) |
+| Rogue | **nothing** |
+| Sorcerer | `SorceryPoint` (2), `SpellSlot` (1) |
+| Warlock | `WarlockSpellSlot` (1) — **not `SpellSlot`** |
+| Wizard | `ArcaneRecoveryPoint` (1), `SpellSlot` (1) |
+| *CircleOfTheLand* | `NaturalRecoveryPoint` (2), `WildShape` (2) |
+| *CircleOfTheMoon* | `WildShape` (2) |
+
+**Re-measure it rather than trusting this table** - it is a snapshot of one patch:
+
+```bash
+py -c "import re,io,collections; t=io.open('<unpacked>/Shared/Public/Shared/Progressions/Progressions.lsx',encoding='utf8',errors='replace').read(); o=collections.defaultdict(set); [o[re.search(r'id=.Name.[^/]*value=.([^\"]+).',b).group(1)].add(r) for b in re.findall(r'<node id=\"Progression\">(.*?)</node>',t,re.S) if re.search(r'id=.Name.',b) for r in re.findall(r'ActionResource\(([A-Za-z_]+),',b)]; [print(k,sorted(v)) for k,v in sorted(o.items())]"
+```
+
+### What to decide, before you answer the interview
+
+- **Does the parent already spend something?** Then strongly prefer spending THAT. It costs
+  you one `ActionResourceDefinitions` file you do not have to write, it cannot desync, and
+  it turns your subclass into a real choice inside the class rather than a bolt-on.
+- **If you spend a vanilla resource, CHECK WHO GRANTS IT.** If the base class does not,
+  your progression must - copy the sibling subclass's line verbatim:
+  `<attribute id="Boosts" type="LSString" value="ActionResource(WildShape,2,0)"/>`
+- **A new pool is right when the fantasy genuinely has no home** in the parent's economy.
+  Warpblade's Warp Dice on a Fighter is the good case: Fighter grants nothing at all.
+- ⚠ **You cannot cleanly REMOVE a vanilla resource or feature from a subclass.** Adding is
+  a subclass progression; removing means overriding the base class, which this toolchain
+  refuses. Design with what the parent gives you, not against it.
+
+⭐ **Found the hard way, 2026-09-02**, on the first subclass built with this document by an
+agent with no prior context: the interview answer said "Slip", the design said "spends Wild
+Shape", and the scaffold cheerfully produced both. Neither the tool nor the writer noticed
+until a human read the two sentences side by side.
+
+---
+
 ## PART 2 — WORKSPACE AND GAME DATA
 
 ```
