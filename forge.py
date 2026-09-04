@@ -483,7 +483,7 @@ data "SpellRoll" "Attack(AttackType.MeleeWeaponAttack)"
 data "SpellProperties" "GROUND:SurfaceChange(Douse)"
 data "VerbalIntent" "Damage"
 data "SpellFlags" "IsMelee;IsHarmful;IsSpell"
-data "SpellAnimation" "b3e6f0f1-4d5f-4ba2-a1b7-56b1a3e0d81a,,;,,;dc2e5bd1-7d64-4b9c-9b6f-9c1c0e5b6c2f,,;,,;,,;,,;,,;,,;,,"
+data "SpellAnimation" "03496c4a-49e0-4132-b585-3e5ecd1ad8e5,,;,,;a4da186a-0872-461e-ae5e-93d5b32b9bef,,;527ca082-4ffa-4edb-a23f-5e7fa798a6ce,,;a9682ef9-5d9e-4ac0-8144-2c7fe6eb868c,,;,,;32fb4d91-7fde-4b05-9144-ea87b9a4284a,,;499b7945-9eff-40a2-9911-73b8963108e4,,;1d3a29f0-9409-462e-81cd-3f24944f63ca,,"
 """
 
 # ------------------------------------------------------------- class icon -----
