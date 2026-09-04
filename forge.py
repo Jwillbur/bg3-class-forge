@@ -61,6 +61,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import uuid
 import xml.etree.ElementTree as ET
@@ -553,6 +554,97 @@ def write_class_icon(root: Path, name: str) -> list[str]:
         resized.save(p.with_suffix(".png"))
         made.append(str(p.relative_to(root)).replace("\\", "/"))
     return made
+
+
+# ---------------------------------------------------- GUI texture metadata -----
+# ⭐ FOUND IN GAME, 2026-09-02. Shipping the four .DDS files is NOT enough. BG3 refuses
+# them with "missing texture metadata" naming `Mods/<Mod>/GUI` unless this file exists.
+# The scaffold shipped icons that could not load, and no static check caught it, because
+# nothing was malformed - a file was simply absent.
+#
+# The format was read out of a mod that works in game, not out of documentation:
+#   - one entry per texture, MapKey is the **.png** path relative to Mods/<Mod>/GUI/,
+#     NOT the .DDS path,
+#   - w / h / mipcount per entry,
+#   - **hi-res only.** AssetsLowRes entries are deliberately absent, which is the same
+#     rule PART 3.5 states from the other direction.
+GUI_METADATA_LSX = """<?xml version="1.0" encoding="utf-8"?>
+<save>
+	<version major="4" minor="8" revision="0" build="500" lslib_meta="v1,bswap_guids" />
+	<region id="config">
+		<node id="config">
+			<children>
+				<node id="entries">
+					<children>
+{{ENTRIES}}					</children>
+				</node>
+			</children>
+		</node>
+	</region>
+</save>
+"""
+
+GUI_METADATA_ENTRY = """						<node id="Object">
+							<attribute id="MapKey" type="FixedString" value="{rel}" />
+							<children>
+								<node id="entries">
+									<attribute id="h" type="int16" value="{size}" />
+									<attribute id="mipcount" type="int8" value="1" />
+									<attribute id="w" type="int16" value="{size}" />
+								</node>
+							</children>
+						</node>
+"""
+
+
+def write_gui_metadata(root: Path, name: str) -> list[str]:
+    """Write Mods/<name>/GUI/metadata.lsf, converting via Divine when it is present.
+
+    Without Divine the .lsx is left in place and the exact conversion command is
+    printed. That is a real, recoverable state - NOT a silent one, because an icon
+    with no metadata entry is the failure this function exists to prevent.
+    """
+    entries = "".join(
+        GUI_METADATA_ENTRY.format(rel=rel.format(name=name).replace(".DDS", ".png"),
+                                  size=size)
+        for rel, size in ICON_SIZES
+        if not rel.startswith("AssetsLowRes"))          # hi-res only. See the note above.
+
+    gui = root / "Mods" / name / "GUI"
+    gui.mkdir(parents=True, exist_ok=True)
+    lsx = gui / "metadata.lsx"
+    lsx.write_text(GUI_METADATA_LSX.replace("{{ENTRIES}}", entries), encoding="utf-8")
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import divine
+        exe = divine.find_divine(probe=False)
+    except Exception:
+        exe = None
+
+    if not exe:
+        print("  ! Divine not found - Mods/%s/GUI/metadata.lsx was written but NOT"
+              " converted." % name)
+        print("    The game needs the .lsf. Run:")
+        print("      divine.exe -g bg3 -a convert-resource -o lsf")
+        print("        -s Mods/%s/GUI/metadata.lsx -d Mods/%s/GUI/metadata.lsf"
+              % (name, name))
+        return [str(lsx.relative_to(root)).replace("\\", "/")]
+
+    lsf = gui / "metadata.lsf"
+    # ⚠ Divine REFUSES a relative path ("Cannot proceed without absolute path [E2]")
+    # and prints that refusal on STDOUT, leaving stderr empty. An error handler that
+    # reads only stderr reports a blank reason for a perfectly clear failure.
+    r = subprocess.run([str(exe), "-g", "bg3", "-a", "convert-resource", "-o", "lsf",
+                        "-s", str(lsx.resolve()), "-d", str(lsf.resolve())],
+                       capture_output=True, text=True, errors="replace")
+    if r.returncode != 0 or not lsf.is_file():
+        why = ((r.stdout or "") + (r.stderr or "")).strip()[:200] or "no output"
+        print("  ! Divine could not convert metadata.lsx: %s" % why)
+        return [str(lsx.relative_to(root)).replace("\\", "/")]
+
+    lsx.unlink()                    # the .lsf is the artifact; the .lsx was scaffolding
+    return [str(lsf.relative_to(root)).replace("\\", "/")]
 
 
 DESIGN_MD = """# {{NAME}}
@@ -1151,6 +1243,11 @@ def scaffold(args) -> int:
     # written at all because a missing one is a BLANK entry on the class-select screen -
     # a plumbing failure wearing an art failure's clothes.
     icons = write_class_icon(root, cfg["name"])
+    # The icons are useless without this: BG3 rejects them with "missing
+    # texture metadata" and names the GUI folder. Found in game 2026-09-02.
+    meta_files = write_gui_metadata(root, cfg["name"])
+    if meta_files:
+        print("GUI texture metadata: %s" % meta_files[0])
     if icons:
         print(f"\nplaceholder class icon written in {len(icons)} size(s). "
               f"It is meant to look temporary.")
@@ -1287,6 +1384,7 @@ def probe(args) -> int:
                 raise ForgeError(f"generated {p} is not well-formed XML: {e}. This is a "
                                  f"bug in forge.py, not in your input.")
     write_class_icon(root, cfg["name"])
+    write_gui_metadata(root, cfg["name"])
 
     print(f"\nprobe '{cfg['name']}' written to {root}/ - {len(written)} file(s)")
     print(f"  question: {args.question}")

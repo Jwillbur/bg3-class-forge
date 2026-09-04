@@ -27,9 +27,9 @@ WHAT IT CHECKS
                   the size its FOLDER implies. The folder decides, not the filename.
   3 UPPERCASE   - the on-disk extension is `.DDS`. A lowercase `.dds` resolves on
                   Windows and fails inside a pak.
-  4 METADATA    - whatever sidecar the hi-res icons carry, the low-res ones must
-                  NOT carry. Checked as a relation, so it stays true if Larian
-                  renames the sidecar.
+  4 METADATA    - Mods/<Mod>/GUI/metadata.lsf exists, declares every HI-RES icon
+                  at its true size, and declares no low-res one. Without this file
+                  BG3 refuses every icon in the mod. Found in game, 2026-09-02.
   5 ATLAS WIRE  - if the mod ships a spell-icon atlas, its UV map and registration
                   paths are the ones a working mod uses, not the ones the wiki says.
   6 TILE SIZE   - atlas tiles are 64x64. Vanilla ships no loose spell icons at all,
@@ -51,7 +51,9 @@ import argparse
 import json
 import re
 import struct
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -86,19 +88,53 @@ def dds_size(p: Path) -> tuple[int, int] | None:
     return width, height
 
 
-# Metadata is LSX/LSF. A .png or .tga beside an icon is the SOURCE ART, which is
-# how every one of these was authored - counting it as metadata made the first run
-# of this tool fail a mod that is live on the Nexus.
-METADATA_EXT = {".lsx", ".lsf"}
+# ⭐ CORRECTED 2026-09-02, BY A GAME LAUNCH. The first version of this file looked for
+# "sidecar" metadata files sitting beside each icon. THERE ARE NONE. The metadata is a
+# single binary file, `Mods/<Mod>/GUI/metadata.lsf`, and without it BG3 refuses every
+# icon in the mod with "missing texture metadata" naming the GUI folder.
+#
+# That first version could never have caught the bug it was written to catch, and it
+# said WARN where the truth was ERROR. Writing a gate against an unmeasured mechanism
+# is the same defect as asserting config instead of behaviour, one layer up.
+#
+# Read out of a mod that works in game:
+#   - one entry per texture, MapKey is the **.png** path relative to Mods/<Mod>/GUI/,
+#   - w / h / mipcount per entry,
+#   - hi-res entries ONLY. AssetsLowRes must not appear.
+def _read_metadata(gui: Path) -> tuple[str, dict]:
+    """-> (status, {png_path: (w, h)}). status is 'ok', 'missing', 'unconverted' or
+    'unreadable'. Needs Divine to read the binary; without it existence is all we get."""
+    lsf, lsx = gui / "metadata.lsf", gui / "metadata.lsx"
+    if not lsf.is_file():
+        return ("unconverted" if lsx.is_file() else "missing"), {}
 
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import divine
+        exe = divine.find_divine(probe=False)
+    except Exception:
+        exe = None
+    if not exe:
+        return "unreadable", {}
 
-def _sidecars(icon: Path) -> list[Path]:
-    """Metadata files beside an icon sharing its stem - the 'metadata' of PART 3.5."""
-    if not icon.parent.is_dir():
-        return []
-    return sorted(q for q in icon.parent.iterdir()
-                  if q.is_file() and q.stem == icon.stem and q != icon
-                  and q.suffix.lower() in METADATA_EXT)
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "metadata.lsx"
+        # Divine refuses relative paths and says so on stdout, not stderr.
+        r = subprocess.run([str(exe), "-g", "bg3", "-a", "convert-resource", "-o", "lsx",
+                            "-s", str(lsf.resolve()), "-d", str(out.resolve())],
+                           capture_output=True, text=True, errors="replace")
+        if r.returncode != 0 or not out.is_file():
+            return "unreadable", {}
+        text = out.read_text(encoding="utf8", errors="replace")
+
+    entries, key = {}, None
+    for m in re.finditer(r'id="MapKey"[^>]*value="([^"]+)"|id="([wh])"[^>]*value="(\d+)"', text):
+        if m.group(1):
+            key = m.group(1)
+            entries[key] = {}
+        elif key:
+            entries[key][m.group(2)] = int(m.group(3))
+    return "ok", {k: (v.get("w"), v.get("h")) for k, v in entries.items() if v}
 
 
 def audit(cfg) -> list[tuple[str, str, str]]:
@@ -111,7 +147,7 @@ def audit(cfg) -> list[tuple[str, str, str]]:
 
     # ---- 1..4 the four class icons -------------------------------------------
     found_any = False
-    hires_sidecars = 0
+    sizes_on_disk: dict = {}
     for i, (tmpl, want) in enumerate(ICON_SIZES):
         rel = tmpl.format(name=name)
         p = root / cfg.data.get("public_dir", "Public") / cfg.data.get("mod_name", name) / rel
@@ -139,19 +175,40 @@ def audit(cfg) -> list[tuple[str, str, str]]:
                         "%s is %dx%d, the folder implies %dx%d - the FOLDER decides"
                         % (rel, got[0], got[1], want, want)))
 
-        # 4 METADATA - hi-res (first two) may carry sidecars, low-res must not
-        side = _sidecars(p)
-        if i < 2:
-            hires_sidecars += len(side)
-        elif side:
-            out.append(("ERROR", "metadata",
-                        "%s carries %s - metadata on a low-res icon is a startup error"
-                        % (rel, ", ".join(s.name for s in side))))
+        sizes_on_disk[rel] = got
 
-    if found_any and hires_sidecars == 0:
+    # ---- 4 METADATA: one file, Mods/<name>/GUI/metadata.lsf --------------------
+    gui = root / "Mods" / cfg.data.get("mod_name", name) / "GUI"
+    status, meta = _read_metadata(gui)
+    if status == "missing":
+        out.append(("ERROR", "metadata",
+                    "Mods/%s/GUI/metadata.lsf is absent. BG3 refuses EVERY icon in the "
+                    "mod with \"missing texture metadata\" naming this folder. Icons "
+                    "present and correct will still not load." % name))
+    elif status == "unconverted":
+        out.append(("ERROR", "metadata",
+                    "metadata.lsx is there but metadata.lsf is not - the game reads the "
+                    "BINARY. Convert it: divine -g bg3 -a convert-resource -o lsf"))
+    elif status == "unreadable":
         out.append(("WARN", "metadata",
-                    "no sidecar metadata beside either hi-res icon - correct for some "
-                    "layouts, but verify against a mod that works in game"))
+                    "metadata.lsf exists but Divine is unavailable, so its CONTENTS were "
+                    "not checked - only that the file is there."))
+    else:
+        for rel, want in ICON_SIZES:
+            png = rel.format(name=name).replace(".DDS", ".png")
+            lowres = rel.startswith("AssetsLowRes")
+            if lowres and png in meta:
+                out.append(("ERROR", "metadata",
+                            "%s is declared in metadata.lsf. Low-res icons must NOT be "
+                            "declared - that is a startup error." % png))
+            elif not lowres and png not in meta:
+                out.append(("ERROR", "metadata",
+                            "%s is not declared in metadata.lsf, so the game will not "
+                            "load it." % png))
+            elif not lowres and meta[png] != (want, want):
+                out.append(("ERROR", "metadata",
+                            "metadata.lsf declares %s as %sx%s; the file is %dx%d"
+                            % (png, meta[png][0], meta[png][1], want, want)))
 
     # ---- 5,6 the spell-icon atlas ---------------------------------------------
     atlases = [q for q in root.rglob("*.lsx")
