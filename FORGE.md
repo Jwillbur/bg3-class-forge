@@ -774,28 +774,30 @@ Explain *why* a value is what it is, not what the line does. The comment that ma
 
 ---
 
-### ⭐ A STATUS BOOST RESOLVES ON THE WEARER. THIS BROKE THE FIRST UNAIDED SUBCLASS.
+### ⭐ A `LevelMapValue()` NAMING A TABLE YOU DID NOT SHIP IS SILENTLY ZERO.
 
-Anything inside a `StatusData` `Boosts` line reads the sheet of the creature CARRYING
-the status - not the caster. `LevelMapValue(...)` and `ClassLevel(...)` included.
+This is what broke Circle of the Kiln, the first subclass this framework built with no
+human design input. Its level-2 feature granted **0 temporary hit points** in play.
+The plumbing was correct. The status applied, the icon showed, the duration ticked.
 
-Put such a status on an **ally** and the scale collapses to nothing. The status still
-applies, the icon still shows, the duration still ticks, and the number is **zero**.
-No error. It reads as a balance problem, not a bug.
+**Cause:** the status read `TemporaryHP(LevelMapValue(<name>))` and the mod shipped
+**no `Levelmaps/` file at all.** An unresolvable LevelMap is not an error - it is a
+zero. Corroborating count: across the 16,593 shipped entries, every `TemporaryHP()`
+argument is a **literal**; `LevelMapValue` appears inside it **zero times**.
 
-**Prefix with `Owner.` to reach the caster.** Counted over the 16,593 shipped entries:
-`StatusData.Boosts` uses `LevelMapValue` seven times - **five with `Owner.`, and all
-five are statuses worn by someone other than the caster** (a thrall, three spiritual
-weapons, a conjured sword). The two bare ones are statuses a character only ever puts
-on themselves. **Vanilla is 5 for 5.**
+**Check both halves before shipping any scaled value:**
+1. every `LevelMapValue(X)` you write has an `X` defined in your own `Levelmaps/`,
+2. the functor you are putting it in is attested taking one - `--find` it first.
 
-⚠ **What it cost:** Circle of the Kiln, the first subclass this framework built
-with no human design input, shipped a level-2 feature that granted **0 temporary hit
-points** in play. The plumbing was right; this rule was in no doc, no memory and no
-check. Full counts: `docs/bg3-mechanics/status-boosts-resolve-on-the-wearer.md`.
+⚠ **And a second, separate rule that is true but did NOT cause this:** a
+`StatusData` `Boosts` line is evaluated on the creature **wearing** the status. Put a
+caster-scaled status on an ALLY and it reads the ally’s sheet. Vanilla uses the
+`Owner.` prefix for exactly this - 5 of the 7 `LevelMapValue` uses in
+`StatusData.Boosts`, and all five are worn by a non-caster.
 
-**Either move the scale onto the SPELL** (where `ClassLevel()` resolves on the caster)
-**or write `Owner.`** - and say in a comment which you chose and why.
+⛔ **I first blamed that second rule for Kiln and published it as "observed in
+play". It was not observed; the mod was only ever tested on the caster themselves.**
+Counts and the retraction: `docs/bg3-mechanics/status-boosts-resolve-on-the-wearer.md`.
 
 
 ## PART 5 — BUILDING, AND THE LOOP WITH THE USER
