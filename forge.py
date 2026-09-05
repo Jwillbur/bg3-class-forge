@@ -177,8 +177,17 @@ def doctor(unpacked: Path) -> int:
                  "12 is vanilla. Fewer means a partial unpack; more means you have "
                  "class mods installed, which is fine."))
 
-    divine = shutil.which("Divine") or shutil.which("divine.exe")
-    rows.append(("Divine (packer)", bool(divine), divine or "not on PATH",
+    # divine.py is the ONE place that finds Divine, and the only one that PROBES it.
+    # shutil.which() was the bug it was written to end: on a machine with Vortex it
+    # returns Vortex's divine, which exists, is on PATH, and cannot pack. doctor kept
+    # its own copy of that mistake until 2026-09-04 and reported MISS on a machine
+    # where the rest of the toolchain finds Divine fine.
+    try:
+        import divine as _divine
+        found = _divine.find_divine()
+    except Exception:
+        found = None
+    rows.append(("Divine (packer)", bool(found), str(found) if found else "not found",
                  "Needed to build a .pak. Not needed to scaffold - you can generate the "
                  "tree now and sort packing out later."))
 
