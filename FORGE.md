@@ -774,6 +774,30 @@ Explain *why* a value is what it is, not what the line does. The comment that ma
 
 ---
 
+### ⭐ A STATUS BOOST RESOLVES ON THE WEARER. THIS BROKE THE FIRST UNAIDED SUBCLASS.
+
+Anything inside a `StatusData` `Boosts` line reads the sheet of the creature CARRYING
+the status - not the caster. `LevelMapValue(...)` and `ClassLevel(...)` included.
+
+Put such a status on an **ally** and the scale collapses to nothing. The status still
+applies, the icon still shows, the duration still ticks, and the number is **zero**.
+No error. It reads as a balance problem, not a bug.
+
+**Prefix with `Owner.` to reach the caster.** Counted over the 16,593 shipped entries:
+`StatusData.Boosts` uses `LevelMapValue` seven times - **five with `Owner.`, and all
+five are statuses worn by someone other than the caster** (a thrall, three spiritual
+weapons, a conjured sword). The two bare ones are statuses a character only ever puts
+on themselves. **Vanilla is 5 for 5.**
+
+⚠ **What it cost:** Circle of the Kiln, the first subclass this framework built
+with no human design input, shipped a level-2 feature that granted **0 temporary hit
+points** in play. The plumbing was right; this rule was in no doc, no memory and no
+check. Full counts: `docs/bg3-mechanics/status-boosts-resolve-on-the-wearer.md`.
+
+**Either move the scale onto the SPELL** (where `ClassLevel()` resolves on the caster)
+**or write `Owner.`** - and say in a comment which you chose and why.
+
+
 ## PART 5 — BUILDING, AND THE LOOP WITH THE USER
 
 **Order:** metadata → registration (Part 2) → **verify it appears in character creation** →
