@@ -10,6 +10,55 @@ landed upstream**, which is why a release here can be days newer than the last c
 
 ---
 
+## 2026-09-06
+
+**`forge/` is the single home for the audits now.** Seventeen tools moved out of
+`bg3/Warpblade/tools/` and into the forge, so any mod runs every check from one
+directory. The mod keeps by-path shims, the pattern already used for `corpus_index`
+and `fx_audit`.
+
+⛔ **Moving them exposed why it mattered: none of the 19 tools in that folder had ever
+imported `modconfig`.** Every path was the literal string `Warpblade`. Run from a
+different mod they audited Warpblade and reported clean - a passing `conflict_probe`,
+`release_check` and `tooltip_audit` over files they had not opened. `loca_lint` was
+hardcoded in **three** places and, pointed at a directory that did not exist, printed
+*"0 errors"* over zero inputs.
+
+**Deliberately NOT moved:** `sim`, `rotation_sim`, `balance_sim`, `residual_sweep`,
+`make_die`, `strip_ring`, `analyze_palette`. Their paths are portable; their subject is
+not. They model one mod's mechanics and art, and shipping them in a public framework
+would present one design as if it were everyone's.
+
+**Added:**
+
+- **⭐ `anim_textkeys.py` is a build gate** - step `[0e/6]` of `build.ps1`, opt-in per mod
+  via `gate_animation_slots` in `forge.json`. It exists because two animation GUIDs were
+  typed by hand into a shipped spell and neither existed in any of 655 animation files;
+  `validate`, `fx_audit` and `pak_audit` all passed them. Unresolved slots can be
+  accepted deliberately in `corpus/anim_textkeys_accepted.json`.
+  ⚠ It **refuses to return a verdict when nothing was scanned** - an empty scan reports
+  NOTHING WAS SCANNED rather than a clean pass, which is the failure the tool was built
+  to catch, one level up.
+- **`loca_lint.py`** moved in and anchored on `modconfig`. Two real bugs fixed with it:
+  spell lists were split on `,` when vanilla uses `;`, and vanilla spell names were
+  reported undefined because the check only knew the mod's own entries.
+
+**Fixed:**
+
+- **`fx_audit` had not actually run in a build since it moved here.** `build.ps1` looked
+  in each mod's `tools/` only, so the forge copy was never reached. It now falls back to
+  `$PSScriptRoot` as advisory. Every clean build between the move and today was clean
+  over a check that never ran.
+- **`build.ps1` broke three times in one session** while the gate was being wired -
+  unbalanced braces, an undefined variable that made the gate silently never run, and
+  nesting inside an fx block that was itself being skipped. The middle one is the
+  instructive failure: **a gate that does not run looks exactly like a gate that passes.**
+- **The shim template emitted doubled braces** - a format-style template applied with
+  `.replace()`, which raised `TypeError: unhashable type: 'dict'` in every shim it
+  wrote. Hit twice.
+
+---
+
 ## 2026-09-02
 
 **The icon and VFX gaps are now tooling, not prose.**
