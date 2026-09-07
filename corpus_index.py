@@ -170,9 +170,30 @@ def parse_file(path: Path) -> list[dict]:
     return entries
 
 
+def report_roots() -> None:
+    """Print which roots this run actually read, and which are absent.
+
+    Added 2026-09-06 (work-offline item 109). A thin unpack returns a confident
+    zero: `--find` on a real entry reports 0 hits, and nothing anywhere says the
+    pak holding it was never extracted. Six "vanilla does not have X" verdicts in
+    one session rested on this index, so it now states its own coverage.
+    """
+    print("corpus roots read by this run:")
+    for root in STATS_ROOTS:
+        n = len(list((root / "Data").glob("*.txt"))) if (root / "Data").is_dir() else 0
+        mark = "  " if n else "ABSENT - "
+        print(f"  {mark}{root.relative_to(UNPACKED).as_posix():<44} {n:>4} .txt")
+    for base in (UNPACKED, UNPACKED_LSX):
+        n = sum(1 for _ in base.rglob("*.lsx")) if base.is_dir() else 0
+        mark = "  " if n else "ABSENT - "
+        print(f"  {mark}{str(base):<44} {n:>4} .lsx")
+    print()
+
+
 def build_index() -> list[dict]:
     entries: list[dict] = []
     seen_files = 0
+    report_roots()
     for root in STATS_ROOTS:
         data_dir = root / "Data"
         if not data_dir.is_dir():
@@ -697,6 +718,18 @@ def cmd_find(entries: list[dict], needle: str) -> None:
                 print(f'{e["name"]}  [{e["type"]}, {e["file"]}]')
                 print(f'    {key} = {val[:500]}')
     print(f"\n{hits} call site(s) for {needle!r}", file=sys.stderr)
+    if not hits:
+        # A zero here is the exact shape of the 2026-09-06 failure: it looks like
+        # evidence, because it has a number attached. It is only evidence that
+        # THIS SPELLING was not found in the roots this index was built from.
+        print("  ZERO IS NOT ABSENCE. It means this spelling was not found in the",
+              file=sys.stderr)
+        print("  roots the index was built from. Before reporting it as an engine",
+              file=sys.stderr)
+        print("  limitation: try a substring, drop the anchor, and re-run",
+              file=sys.stderr)
+        print("  `py corpus_index.py` to see which roots were actually read.",
+              file=sys.stderr)
 
 
 def cmd_entry(entries: list[dict], by_name: dict[str, dict], name: str) -> None:
