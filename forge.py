@@ -791,13 +791,34 @@ WARN: list[str] = []
 # A floor, not a corpus. These are the vanilla resources a starter class is most
 # likely to spend; anything else must be declared in ActionResourceDefinitions.lsx.
 # If a real vanilla resource is missing here, add it - do not silence the check.
+# ⛔ This set was hand-typed, and it was wrong in both directions. It listed
+#   "SpellSlot", which vanilla spends ZERO times, and omitted "SpellSlotsGroup",
+#   which is the SECOND most spent cost in the game - 1,190 uses. So the first
+#   upcastable spell anyone wrote failed the gate for being correct.
+#   Rebuilt 2026-09-06 by measuring every UseCosts/HitCosts/Cost value in the
+#   shipped stats:
+#     grep -rho 'data "\(UseCosts\|HitCosts\|Cost\)" "[^"]*"' <unpacked>/*/Public/*/Stats/Generated/Data/*.txt
+#       | sed 's/.*" "//' | tr ';' '\n' | sed 's/:.*//' | sort | uniq -c | sort -rn
+#   Re-run it after a game patch rather than adding names by hand.
 VANILLA_RESOURCES = {
+    # the four everything uses
     "ActionPoint", "BonusActionPoint", "ReactionActionPoint", "Movement",
-    "SpellSlot", "KiPoint", "SuperiorityDie", "Rage", "SorceryPoint",
-    "WildShape", "ChannelDivinity", "ChannelOath", "BardicInspiration",
-    "LayOnHandsCharge", "ArcaneRecoveryPoint", "NaturalRecoveryPoint",
-    "FungalInfestationCharge", "WarPriestActionPoint", "SneakAttack_Charge",
+    "SpellSlotsGroup",
+    # class pools
+    "KiPoint", "SuperiorityDie", "Rage", "SorceryPoint", "WildShape",
+    "ChannelDivinity", "ChannelOath", "BardicInspiration", "LayOnHandsCharge",
+    "ArcaneRecoveryPoint", "NaturalRecoveryPoint", "FungalInfestationCharge",
+    "WarPriestActionPoint", "SneakAttack_Charge", "ArcaneShot", "Bladesong",
+    "CosmicOmen", "StarMapPoint", "SwarmCharge", "WrithingTidePoint",
+    "TidesOfChaos", "LuckPoint", "CurvingShot_Charge", "HitDice",
+    "TwinklingConstitution_Charge", "LegendaryResistanceCharge",
+    "EyeStalkActionPoint",
 }
+
+# Every interrupt charge is its own named resource - 40+ of them ship, one per
+# reaction, and listing them individually would rot on the next patch. Note the
+# typo: vanilla spells "Interupt_" in some of them, and that is not ours to fix.
+VANILLA_RESOURCE_PREFIXES = ("Interrupt_", "Interupt_")
 
 
 def err(msg: str) -> None:
@@ -971,7 +992,10 @@ def check_passives_and_spells(trees) -> None:
                 if name and not name[0].isdigit():
                     costs.add(name)
     for c in sorted(costs):
-        if c not in declared_res and c not in VANILLA_RESOURCES:
+        if c in declared_res or c in VANILLA_RESOURCES \
+                or c.startswith(VANILLA_RESOURCE_PREFIXES):
+            continue
+        if True:
             err('spell costs "{}" which is neither a vanilla resource nor declared in '
                 "ActionResourceDefinitions.lsx".format(c))
     for c in sorted(costs & declared_res):

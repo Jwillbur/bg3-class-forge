@@ -391,6 +391,21 @@ check("...nor across damage types",
 check("...and a single-target spell gets no such licence",
       _ta.scaled_by_targets("6d6|Fire", ["2d6|Fire"], 1), False)
 
+# ---- 4b. the validator's resource whitelist was hand-typed and wrong --------
+# It listed SpellSlot (0 uses in the shipped stats) and omitted SpellSlotsGroup
+# (1,190 uses, the second most spent cost in the game), so the first upcastable
+# spell anyone wrote failed the gate for being correct.
+check("the generated validator knows SpellSlotsGroup",
+      '"SpellSlotsGroup"' in F.STARTER_VALIDATE)
+# (the name survives in the comment explaining the fix, so the control has to
+#  ignore comment lines and look at the SET)
+_res_code = chr(10).join(l for l in F.STARTER_VALIDATE.splitlines()
+                         if not l.lstrip().startswith("#"))
+check("...and no longer lists SpellSlot, which vanilla never spends",
+      '"SpellSlot",' in _res_code, False)
+check("...and accepts the 40+ Interrupt_ charges by prefix",
+      "VANILLA_RESOURCE_PREFIXES" in F.STARTER_VALIDATE)
+
 # ---- 5. release_check demanded a framework every mod does not need ----------
 _rc = (FORGE_DIR / "release_check.py").read_text(encoding="utf-8")
 check("release_check no longer hardcodes that CF is required",
