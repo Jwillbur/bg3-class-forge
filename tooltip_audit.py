@@ -40,7 +40,31 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import sim as S  # noqa: E402  - the paren-aware functor splitter lives there
+import modconfig  # noqa: E402
+
+# ⛔ Until 2026-09-06 this file had NO config of its own. It called
+#   `sim.parse_stats()` with no argument and inherited sim's default, so it
+#   audited whatever mod SIM resolved - Warpblade - no matter which mod it was
+#   run in. The 2026-09-06 sweep for hardcoded tools missed it because the
+#   hardcoding was INDIRECT: this file never contained the string "Warpblade".
+def _cfg():
+    """Resolve the mod LAZILY, so importing this module cannot kill the process.
+
+    ⛔ This was a module-level `modconfig.load()` with a `raise SystemExit(2)`.
+       That made the file unimportable outside a mod directory - including from
+       forge_acceptance.py, which wanted to unit-test `scaled_by_targets`. A module
+       that exits during import cannot be tested by anything.
+    """
+    try:
+        return modconfig.load(Path.cwd())
+    except Exception as _e:  # noqa: BLE001 - the message is the useful part
+        print(f"cannot locate this mod: {_e}", file=sys.stderr)
+        raise SystemExit(2)
+import statparse as S  # noqa: E402  - the paren-aware functor splitter
+# ⛔ This was `import sim`, and sim.py stayed in bg3/Warpblade/tools/ when this
+#   file moved into forge/. Run from any other mod it raised ModuleNotFoundError,
+#   so the honesty check ran for exactly one mod. Found 2026-09-06 by pointing it
+#   at Oath of Avernus.
 
 for _s in (sys.stdout, sys.stderr):
     try:
@@ -169,6 +193,35 @@ def damages(blob: str) -> list[str]:
     return out
 
 
+DICE_RE = re.compile(r"^(\d+)d(\d+)$")
+
+
+def scaled_by_targets(claimed: str, real: list[str], targets: int) -> bool:
+    """Is `claimed` just `real` multiplied by the number of targets?
+
+    ⛔ WHY, 2026-09-06. Section D compared TooltipDamageList against the functors
+       one-for-one, so a spell that hits three targets and tooltips the TOTAL read as
+       a lie. The positive control settles it: vanilla `Projectile_ScorchingRay` has
+       `AmountOfTargets 3`, `SpellSuccess DealDamage(2d6,Fire,Magical)` and
+       `TooltipDamageList DealDamage(6d6,Fire)`. 6d6 is 3 x 2d6 and the tooltip is
+       correct - the check was not. It fired on both Oath of Avernus ray spells,
+       which clone that exact entry.
+    """
+    if targets < 2:
+        return False
+    cm = DICE_RE.match(claimed.split("|")[0])
+    if not cm:
+        return False
+    ctype = claimed.split("|", 1)[1] if "|" in claimed else ""
+    for r in real:
+        rm = DICE_RE.match(r.split("|")[0])
+        rtype = r.split("|", 1)[1] if "|" in r else ""
+        if rm and rtype == ctype and cm.group(2) == rm.group(2) \
+                and int(cm.group(1)) == int(rm.group(1)) * targets:
+            return True
+    return False
+
+
 def norm_dmg(arg: str) -> str:
     """Compare a damage expression by its shape, not its punctuation.
 
@@ -235,11 +288,16 @@ def audit(stats: dict) -> list[dict]:
         if tdl:
             claimed = [norm_dmg(x) for x in damages(tdl)]
             real = [norm_dmg(x) for x in damages(effects)]
+            try:
+                targets = int(e.get("AmountOfTargets") or 1)
+            except ValueError:
+                targets = 1
             for c in claimed:
-                if c not in real:
-                    add("ERROR", name, "damage-not-dealt",
-                        f"tooltip lists {c.replace('|', ' ')} and nothing deals it")
-            if len(real) > len(claimed):
+                if c in real or scaled_by_targets(c, real, targets):
+                    continue
+                add("ERROR", name, "damage-not-dealt",
+                    f"tooltip lists {c.replace('|', ' ')} and nothing deals it")
+            if len(real) > len(claimed) and targets < 2:
                 add("WARN", name, "damage-not-listed",
                     f"deals {len(real)} damage instance(s), tooltip lists {len(claimed)}")
 
@@ -260,7 +318,7 @@ def main() -> int:
     ap.add_argument("--json", action="store_true", help="machine-readable")
     a = ap.parse_args()
 
-    stats = S.parse_stats()
+    stats = S.parse_stats(_cfg().stats)
     found = audit(stats)
     if a.json:
         print(json.dumps(found, indent=2))

@@ -344,5 +344,60 @@ else:
     print("  SKIP  scaffold seam test - no unpacked game data on this machine")
 
 
+# ============================================================ 2026-09-06 ====
+# Four gates that were WRONG until Oath of Avernus was pointed at them. Each of
+# these passed its own suite while being wrong about the thing it exists to check,
+# so each gets a control that fails if the fix is ever reverted.
+
+# ---- 1. the scaffolder emitted an attribute vanilla has never used ----------
+# `ProgressionId` is not one of the nine attributes any of the 35 shipped
+# ProgressionDescription nodes uses. It keyed the level-up panel to nothing.
+# (the name still appears in the template's own comment explaining the fix, so the
+#  control has to look for the ATTRIBUTE, not the word)
+check("PROGDESC does not emit the invented `ProgressionId`",
+      'id="ProgressionId"' in F.PROGDESC, False)
+check("PROGDESC keys the panel entry by ExactMatch, the way vanilla does",
+      'id="ExactMatch"' in F.PROGDESC)
+
+# ---- 2. the generated validator could not see a TranslatedString -----------
+# A TranslatedString keeps its handle in `handle=`, never in `value=`. Reading
+# only `value=` made every handle used by a ClassDescription or an
+# ActionResourceDefinition report as unused: 9 warnings on Avernus, 7 of them false.
+check("the generated validator reads handle= as well as value=",
+      'a.get("handle")' in F.STARTER_VALIDATE)
+
+# ---- 3. tooltip_audit imported a module that is not shipped with it ---------
+# `sim.py` stayed in bg3/Warpblade/tools/ when tooltip_audit moved into forge/,
+# so the honesty check raised ModuleNotFoundError in every other mod.
+_tt = (FORGE_DIR / "tooltip_audit.py").read_text(encoding="utf-8")
+check("tooltip_audit does not import a mod-local module",
+      "import sim as S" in _tt, False)
+check("...it uses the shared parser instead", "import statparse as S" in _tt)
+check("...and resolves its own mod rather than inheriting sim's",
+      "S.parse_stats(_cfg().stats)" in _tt)
+
+# ---- 4. tooltip_audit called a correct multi-target tooltip a lie -----------
+# Positive control from the shipped corpus: Projectile_ScorchingRay has
+# AmountOfTargets 3, SpellSuccess DealDamage(2d6,Fire,Magical) and
+# TooltipDamageList DealDamage(6d6,Fire). 6d6 is 3 x 2d6 and vanilla is right.
+_sys.path.insert(0, str(FORGE_DIR))
+import tooltip_audit as _ta  # noqa: E402
+check("a 3-target spell may tooltip 3x its per-hit dice",
+      _ta.scaled_by_targets("6d6|Fire", ["2d6|Fire"], 3))
+check("...but not an arbitrary multiple",
+      _ta.scaled_by_targets("7d6|Fire", ["2d6|Fire"], 3), False)
+check("...nor across damage types",
+      _ta.scaled_by_targets("6d6|Fire", ["2d6|Cold"], 3), False)
+check("...and a single-target spell gets no such licence",
+      _ta.scaled_by_targets("6d6|Fire", ["2d6|Fire"], 1), False)
+
+# ---- 5. release_check demanded a framework every mod does not need ----------
+_rc = (FORGE_DIR / "release_check.py").read_text(encoding="utf-8")
+check("release_check no longer hardcodes that CF is required",
+      "CF is required at runtime" in _rc, False)
+check("...it reads the requirement from forge.json",
+      'CFG.data.get("requires")' in _rc)
+
+
 print("\n" + ("ALL GREEN" if OK else "SOMETHING FAILED"))
 sys.exit(0 if OK else 1)

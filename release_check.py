@@ -161,15 +161,33 @@ def audit() -> dict:
                 blocker("packaging", f"dist/info.json is not readable: {exc}")
 
     # --- dependencies -------------------------------------------------------
+    # ⛔ Until 2026-09-06 this block asserted that EVERY mod needs Compatibility
+    #   Framework, because the first mod it was written against did. Oath of Avernus
+    #   does not: its ClassDescription registers the subclass by ParentGuid - the same
+    #   shape all four shipped Paladin subclasses use - and it overrides no vanilla
+    #   file, so there is nothing for CF to reconcile. A blocker that fires on a
+    #   correct mod trains you to ignore blockers.
+    #   The requirement is now per-mod, declared in forge.json:
+    #       "requires": ["Compatibility Framework", "CommunityLibrary"]
+    #   Absent or empty means the mod needs no framework, and the check becomes
+    #   "does the meta declare what forge.json says you need".
     deps = declared_dependencies()
-    if not deps:
-        blocker("dependencies", "no dependencies declared - CF is required at runtime")
-    elif not any("Compatibility" in d for d in deps):
-        blocker("dependencies", f"Compatibility Framework not declared. Found: {deps}")
-    if not any("CommunityLibrary" in d.replace(" ", "") for d in deps):
+    required = CFG.data.get("requires") or []
+    if isinstance(required, str):
+        required = [required]
+    for want in required:
+        key = want.replace(" ", "").lower()
+        if not any(key in d.replace(" ", "").lower() for d in deps):
+            blocker("dependencies", f"forge.json requires {want!r}, "
+                                    f"and meta.lsx does not declare it. Found: {deps or 'none'}")
+    if required and any("Compatibility" in d for d in required) \
+            and not any("CommunityLibrary" in d.replace(" ", "") for d in required):
         note("dependencies", "CommunityLibrary is not declared directly. It is a hard "
                              "requirement of CF, so it resolves transitively, but users "
                              "installing manually see only what you declare.")
+    if not required and deps:
+        note("dependencies", f"meta.lsx declares {deps}, but forge.json lists no "
+                             f"'requires'. One of the two is out of date.")
 
     # --- player-facing text -------------------------------------------------
     if not LOCA.exists():

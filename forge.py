@@ -338,7 +338,15 @@ PROGDESC = """<?xml version="1.0" encoding="utf-8"?>
                 <node id="ProgressionDescription">
                     <attribute id="DisplayName" type="TranslatedString" handle="{{H_FEAT_NAME}}" version="1"/>
                     <attribute id="Description" type="TranslatedString" handle="{{H_FEAT_DESC}}" version="1"/>
-                    <attribute id="ProgressionId" type="guid" value="{{PROG_UUID}}"/>
+                    <!-- ⛔ This was `ProgressionId`, pointing at the level-1 Progression
+                         UUID. MEASURED 2026-09-06 against all 35 ProgressionDescription
+                         nodes that ship (Gustav 6, GustavX 29): the legal attributes are
+                         Description, DisplayName, ExactMatch, SelectorId,
+                         ProgressionTableId, UUID, Hidden, PassivePrototype and Type.
+                         `ProgressionId` is not among them - the scaffolder invented it.
+                         Vanilla keys the panel entry to a FEATURE NAME (23 of 29 in
+                         GustavX use ExactMatch), not to a progression row. -->
+                    <attribute id="ExactMatch" type="FixedString" value="{{FEATURE_ID}}"/>
                     <attribute id="ProgressionTableId" type="guid" value="{{TABLE_UUID}}"/>
                     <attribute id="UUID" type="guid" value="{{PROGDESC_UUID}}"/>
                 </node>
@@ -840,9 +848,15 @@ def check_handles(trees) -> None:
     for f, t in trees.items():
         if f.suffix == ".lsx":
             for a in t.iter("attribute"):
-                v = a.get("value") or ""
-                if re.fullmatch(r"h[0-9a-f]{8,}\w*", v):
-                    used.add(v)
+                # ⛔ `handle=` was missing until 2026-09-06, and it is where every
+                #   TranslatedString actually keeps its handle - `value=` is for the
+                #   other types. So a handle used by a ClassDescription DisplayName,
+                #   an ActionResourceDefinition or a ProgressionDescription read as
+                #   unused. Measured on Oath of Avernus: 9 warnings, 7 of them false.
+                #   A warning list that is 78% wrong is one nobody reads.
+                for v in (a.get("value") or "", a.get("handle") or ""):
+                    if re.fullmatch(r"h[0-9a-f]{8,}\w*", v):
+                        used.add(v)
     for f in stats_files():
         used.update(re.findall(r"\b(h[0-9a-f]{8}\w*)\b", f.read_text(encoding="utf-8")))
     for h in sorted(used - declared):
