@@ -240,6 +240,15 @@ if (-not $SkipValidate) {
         if ($LASTEXITCODE -ne 0) {
             throw "fx_audit failed. Fix the ERRORs above, or re-run with -SkipValidate to pack anyway."
         }
+
+        # ⭐ ANIMATION SLOTS. A SpellAnimation GUID that resolves to no clips
+        # plays nothing, silently, and every other gate passes it.
+        Write-Host "[0e/6] Resolving animation slots..." -ForegroundColor Yellow
+        $ak = Join-Path $Forge "anim_textkeys.py"
+        if (Test-Path $ak) {
+            & py $ak --rebuild
+            if ($LASTEXITCODE -ne 0) {
+                throw "anim_textkeys failed: an animation slot resolves to NO clips. Fix the GUID, or accept it in corpus/anim_textkeys_accepted.json."
         Write-Host "  ok" -ForegroundColor Green
     }
 

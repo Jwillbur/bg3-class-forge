@@ -202,7 +202,22 @@ def scan(wanted: set) -> dict:
     return dict(out)
 
 
+ACCEPTED = "anim_textkeys_accepted.json"
+
+
+def _accepted() -> set:
+    """Slots a human has already looked at and signed off."""
+    p = MOD / "corpus" / ACCEPTED
+    if not p.is_file():
+        return set()
+    try:
+        return set(json.loads(p.read_text(encoding="utf8")).get("accepted", []))
+    except Exception:
+        return set()
+
+
 def rebuild() -> int:
+    unresolved = []
     used = our_slot_guids()
     print(f"{len(used)} distinct animation slots referenced by our spells")
     data = scan(set(used))
@@ -232,9 +247,24 @@ def rebuild() -> int:
         }
         if not clips:
             print(f"  WARNING {slot} resolved to NO clips ({', '.join(sorted(refs))})")
+            unresolved.append((slot, sorted(refs)))
     CACHE.parent.mkdir(parents=True, exist_ok=True)
     CACHE.write_text(json.dumps(payload, indent=1), encoding="utf-8")
     print(f"wrote {CACHE}  ({CACHE.stat().st_size/1024:.0f} KB)")
+    # ⛔ THE GATE. A slot that resolves to no clips means the spell plays no
+    # animation, silently. That is how two hand-typed UUIDs shipped in Oath of
+    # Avernus on 2026-09-06.
+    bad = [(s, r) for s, r in unresolved if s not in _accepted()]
+    if bad:
+        print()
+        print("%d animation slot(s) resolve to NO clips:" % len(bad))
+        for s, r in bad:
+            print("   %s   %s" % (s, ", ".join(r)))
+        print()
+        print("Either the GUID is wrong, or the animation belongs to a creature rig")
+        print("the player does not have. If it is deliberate, record it in")
+        print("corpus/%s as {\"accepted\": [\"<guid>\"]}" % ACCEPTED)
+        return 1
     return 0
 
 
