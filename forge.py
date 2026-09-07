@@ -923,11 +923,28 @@ def check_passives_and_spells(trees) -> None:
         if f.suffix == ".lsx" and f.name == "SpellLists.lsx":
             list_uuids.update(v for v in attrs(t, "UUID") if v)
             for v in attrs(t, "Spells"):
-                list_spells.update(x.strip() for x in (v or "").split(",") if x.strip())
+                # ⛔ Vanilla separates spell lists with SEMICOLONS, measured in
+                # Oath of Devotion: "Shout_SacredWeapon;Shout_TurnTheUnholy;..."
+                # Splitting on "," treated a whole list as ONE spell name.
+                for x in (v or "").replace(";", ",").split(","):
+                    if x.strip():
+                        list_spells.add(x.strip())
     for u in sorted(spell_list_refs - list_uuids):
         err("AddSpells({}) references a spell list this mod does not define".format(u))
-    for s in sorted(list_spells - defined):
-        err('spell list contains "{}" which no stats file defines'.format(s))
+    # A spell list may name VANILLA spells - that is the point of an oath list.
+    # Only a name defined by neither this mod nor the shipped game is an error.
+    vanilla = set()
+    try:
+        import sys as _sys
+        # corpus_index lives in forge/, not beside this file.
+        _sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "forge"))
+        import corpus_index as _ci
+        vanilla = {r["name"] for r in _ci.build_index()}
+    except Exception as _e:
+        warn("could not load the vanilla corpus (%s) - spell-list names are "
+             "checked against this mod only, so a vanilla typo will slip through" % _e)
+    for s in sorted(list_spells - defined - vanilla):
+        err('spell list contains "{}" which neither this mod nor the game defines'.format(s))
 
     declared_res = set()
     for f, t in trees.items():
