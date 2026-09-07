@@ -234,6 +234,7 @@ if (-not $SkipValidate) {
     # shipped four of those for two weeks and took three live reports to find. ERRORs
     # only; the WARNs (a key some weapon rigs lack) are reported but do not block.
     $fx = Join-Path $Workspace 'tools/fx_audit.py'
+    if (-not (Test-Path $fx)) { $fx = Join-Path $PSScriptRoot 'fx_audit.py' }
     if (Test-Path $fx) {
         Write-Host "[0b/6] Auditing effects, sounds and animation text keys..." -ForegroundColor Yellow
         & py $fx
@@ -241,15 +242,21 @@ if (-not $SkipValidate) {
             throw "fx_audit failed. Fix the ERRORs above, or re-run with -SkipValidate to pack anyway."
         }
 
-        # ⭐ ANIMATION SLOTS. A SpellAnimation GUID that resolves to no clips
-        # plays nothing, silently, and every other gate passes it.
-        Write-Host "[0e/6] Resolving animation slots..." -ForegroundColor Yellow
-        $ak = Join-Path $Forge "anim_textkeys.py"
-        if (Test-Path $ak) {
-            & py $ak --rebuild
-            if ($LASTEXITCODE -ne 0) {
-                throw "anim_textkeys failed: an animation slot resolves to NO clips. Fix the GUID, or accept it in corpus/anim_textkeys_accepted.json."
         Write-Host "  ok" -ForegroundColor Green
+    }
+
+# ⭐ ANIMATION SLOTS. A SpellAnimation GUID that resolves to no clips
+    # plays nothing, silently, and every other gate passes it.
+    Write-Host "[0e/6] Resolving animation slots..." -ForegroundColor Yellow
+    # $PSScriptRoot IS the forge directory - this script lives in it. An earlier
+    # version used $Forge, which does not exist, so Test-Path was false and the
+    # gate silently never ran. That is the exact failure it was written to catch.
+    $ak = Join-Path $PSScriptRoot "anim_textkeys.py"
+    if (Test-Path $ak) {
+        & py $ak --rebuild
+        if ($LASTEXITCODE -ne 0) {
+            throw "anim_textkeys failed: an animation slot resolves to NO clips. Fix the GUID, or accept it in corpus/anim_textkeys_accepted.json."
+        }
     }
 
     # sim.py runs the the mod's own functors against a scripted fight - a plain attack, a
