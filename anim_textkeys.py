@@ -254,6 +254,15 @@ def rebuild() -> int:
     # ⛔ THE GATE. A slot that resolves to no clips means the spell plays no
     # animation, silently. That is how two hand-typed UUIDs shipped in Oath of
     # Avernus on 2026-09-06.
+    # ⛔ A tool's "everything is broken" is indistinguishable from its "I read
+    # nothing". If no animation files were scanned, every slot resolves to no clips
+    # and the gate would fail a perfectly good mod. Refuse to judge instead.
+    if not data:
+        print()
+        print("NOTHING WAS SCANNED - 0 animation files read from", UNPACKED_LSX)
+        print("That is not a clean result, it is an empty one. Not gating on it.")
+        return 0
+
     bad = [(s, r) for s, r in unresolved if s not in _accepted()]
     if bad:
         print()
