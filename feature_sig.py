@@ -261,6 +261,15 @@ def verified_date(feature: dict):
 
 
 def load():
+    # A mod with no features.json has had nothing blessed yet - usually because it has
+    # never been verified in a running game. That is a COVERAGE GAP to state, not a
+    # traceback: a tool that crashes on a mod that is not Warpblade reads as broken and
+    # gets dropped from the sweep. Same shape as tooltip_audit's 2026-09-07 crash.
+    if not FEATURES.is_file():
+        print(f"no {FEATURES.name} in {MOD.name} - nothing has been blessed yet, so there "
+              f"is no baseline to drift from.")
+        print("  NOT CHECKED. Bless a feature after a live pass confirms it works.")
+        raise SystemExit(2)
     return json.loads(FEATURES.read_text(encoding="utf-8"))
 
 

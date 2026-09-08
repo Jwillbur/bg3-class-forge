@@ -348,7 +348,23 @@ if (-not $SkipValidate) {
     #   3 a feature on the wrong CARRIER - the aura applied itself from a passive on
     #     OnCreate; every shipped paladin aura is a free clickable Shout at duration -1.
     #     Class 3 is a NOTE, never a failure: it is a judgement call, not a fault.
-    Write-Host "[0h/6] Checking value vocabularies and identifiers..." -ForegroundColor Yellow
+    # ref_closure answers "does every name this mod references exist?" - it was here
+    # first and class_sweep briefly reimplemented it. 0h runs both rather than one
+    # tool doing a worse version of the other's job.
+    Write-Host "[0h/6] Checking referenced names..." -ForegroundColor Yellow
+    $rc = Join-Path $PSScriptRoot "ref_closure.py"
+    if (Test-Path $rc) {
+        & py $rc
+        if ($LASTEXITCODE -eq 1) {
+            throw "ref_closure failed - the mod references a name that does not exist. It parses, and does nothing in game."
+        } elseif ($LASTEXITCODE -ne 0) {
+            Write-Host "  NOT CHECKED - referenced names were not verified (exit $LASTEXITCODE). This is not a pass." -ForegroundColor Yellow
+        } else { Write-Host "  ok" -ForegroundColor Green }
+    } else {
+        Write-Host "  ref_closure.py not found beside build.ps1 - NOT CHECKED" -ForegroundColor Yellow
+    }
+
+    Write-Host "[0h/6] Checking value vocabularies..." -ForegroundColor Yellow
     $cs = Join-Path $PSScriptRoot "class_sweep.py"
     if (Test-Path $cs) {
         & py $cs $Workspace

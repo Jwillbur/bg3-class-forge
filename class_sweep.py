@@ -6,8 +6,9 @@ the engine. Three questions nothing else asks:
   1. VALUE NOT ATTESTED FOR THIS FIELD ON THIS TYPE. The six spell lists used
      `Comment`, which appears 0 times in 358 shipped SpellList nodes. An `Icon` name
      that does not exist draws a blank square, which is what was reported that day.
-  2. IDENTIFIER RESOLVES NOWHERE. A status or passive named in a functor that exists
-     in neither the shipped data nor our own files is a silent no-op.
+  2. (REMOVED 2026-09-08 - ref_closure.py already answered this, and answered it better:
+     "Does every name this mod REFERENCES actually exist?", 24 names against 17,403 known
+     entries. It was rebuilt here without checking. Gate 0h calls ref_closure for it.)
   3. FEATURE ON THE WRONG CARRIER. A passive doing what vanilla does with a clickable
      spell - "the paladin auras are clickable, ours is not". Reported as a NOTE for a
      human to judge; a gate that blocks on a design judgement gets deleted.
@@ -144,26 +145,6 @@ for name, e in sorted(mine.items()):
 print("  [1] %d unattested value(s), %d icon note(s), %d free-text field(s) skipped%s"
       % (n1, notes, skipped, NL))
 
-FUNC = re.compile(r"\b(ApplyStatus|RemoveStatus|HasStatus|UnlockSpell|UseSpell)\s*\(([^)]*)\)")
-known = set(van) | set(mine)
-n2 = 0
-for name, e in sorted(mine.items()):
-    body = NL.join(e['_f'].values())
-    refs = set()
-    for m in FUNC.finditer(body):
-        for a in m.group(2).split(','):
-            a = a.strip().strip("'\"")
-            if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{3,}', a):
-                refs.add(a)
-    for tok in re.split(r'[;,]', e['_f'].get('Passives', '')):
-        if tok.strip(): refs.add(tok.strip())
-    for r in sorted(refs - known - groups - NOISE):
-        if r[0].isupper():
-            n2 += 1
-            print('  [2] %-34s references "%s" - not an entry here or in the corpus'
-                  % (name, r))
-print("  [2] %d dangling identifier(s)%s" % (n2, NL))
-
 n3 = 0
 for name, e in sorted(mine.items()):
     if e.get('_t') != 'PassiveData':
@@ -176,5 +157,6 @@ for name, e in sorted(mine.items()):
         print('      shape as a free clickable Shout - check it should not be one.')
 print("  [3] %d carrier(s) worth a look%s" % (n3, NL))
 
-print("%d finding(s) in classes 1-2, %d note(s)" % (n1 + n2, notes + n3))
-raise SystemExit(1 if (n1 + n2) else 0)
+print("%d finding(s), %d note(s). Names are ref_closure's job, not this one."
+      % (n1, notes + n3))
+raise SystemExit(1 if n1 else 0)
