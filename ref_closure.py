@@ -107,10 +107,68 @@ def references(ours: dict) -> dict[str, set]:
     return refs
 
 
+# ⛔ Equipment.txt was invisible to this tool until 2026-09-08. It sits one directory
+# ABOVE Data/ and has its own grammar - `new equipment "X"` defines a set,
+# `add equipment entry "Y"` names an item inside one - so the stats parser never saw it
+# and every item name in it went unchecked. Oath of Avernus shipped nine of them the day
+# its character-creation kit was written, and the tool still said "clean".
+# A wrong name here is silent in exactly the way this whole file exists to catch: the
+# character simply starts without that item.
+EQP_DEF = re.compile(r'^new equipment "([^"]+)"', re.M)
+EQP_REF = re.compile(r'^add equipment entry "([^"]+)"', re.M)
+
+
+def equipment_names(ours_stats: set) -> tuple[dict, set]:
+    """(item name -> the equipment sets naming it), and every defined set name."""
+    refs: dict[str, set] = defaultdict(set)
+    defined: set = set()
+
+    def scan(path: Path, collect_refs: bool):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return
+        cur = None
+        for line in text.splitlines():
+            m = EQP_DEF.match(line)
+            if m:
+                cur = m.group(1); defined.add(cur); continue
+            m = EQP_REF.match(line)
+            if m and collect_refs:
+                refs[m.group(1)].add(cur or path.name)
+
+    for p in sorted(CFG.public.glob("*/Stats/Generated/Equipment.txt")):
+        scan(p, True)
+    scan(Path(str(CFG.public / "Stats/Generated/Equipment.txt")), True)
+    for p in sorted(Path(ci.UNPACKED).glob("*/Public/*/Stats/Generated/Equipment.txt")
+                    if hasattr(ci, "UNPACKED") else []):
+        scan(p, False)
+    return refs, defined
+
+
+def class_equipment_refs() -> dict[str, set]:
+    """`ClassEquipment` in a ClassDescription must name a defined equipment SET.
+    Ours named none at all until v1.0.2.7, which is why the character started naked."""
+    out: dict[str, set] = defaultdict(set)
+    for p in CFG.public.rglob("ClassDescriptions/*.lsx"):
+        text = p.read_text(encoding="utf-8", errors="replace")
+        for m in re.finditer(r'id="ClassEquipment"[^>]*value="([^"]+)"', text):
+            out[m.group(1)].add(p.name)
+    return out
+
+
 def audit(data_dir: Path | None = None) -> tuple[dict, int, int]:
     d = data_dir or DATA
     ours, known = known_names(d)
     refs = references(ours)
+
+    eq_refs, eq_defined = equipment_names(known)
+    for item, users in eq_refs.items():
+        refs[item] |= {u + " (equipment)" for u in users}
+    for setname, users in class_equipment_refs().items():
+        refs[setname] |= {u + " (ClassEquipment)" for u in users}
+    known = known | eq_defined
+
     missing = {n: v for n, v in refs.items()
                if n not in known and not KEYWORD.match(n)}
     return missing, len(refs), len(known)

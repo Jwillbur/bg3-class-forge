@@ -10,6 +10,32 @@ landed upstream**, which is why a release here can be days newer than the last c
 
 ---
 
+## 2026-09-08 (c)
+
+**`ref_closure.py` could not see `Equipment.txt`, so a mod's character-creation kit was
+never checked.**
+
+That file sits one directory **above** `Data/` and has its own grammar — `new equipment
+"X"` defines a set, `add equipment entry "Y"` names an item inside one — so the stats
+parser never opened it. Oath of Avernus shipped nine item names in a new kit and the tool
+still reported **clean**.
+
+⛔ A wrong name there is silent in exactly the way this tool exists to catch: the character
+simply starts without that item. The bug that prompted the kit was the subclass starting
+with **no weapon, armour or clothes at all**, so the field is worth guarding.
+
+Two new checks:
+
+- **`add equipment entry` → a defined stats entry.** References 24 → 34.
+- **`ClassEquipment` in a ClassDescription → a defined equipment SET.** Known names
+  17,403 → 18,127.
+
+Fault-injected in both directions — a bad item name and a bad set name — and both are
+caught with correct attribution (`WPN_NoSuchSword <- EQP_CC_Paladin_Avernus (equipment)`).
+Exit code read from the process, not from a pipeline. Warpblade still clean, 28/18,139.
+
+---
+
 ## 2026-09-08 (b)
 
 **`class_sweep.py` (new), wired as gate `[0h/6]` — three shapes that parse, validate, and
