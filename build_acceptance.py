@@ -219,6 +219,80 @@ def main() -> int:
             rep = json.loads((ws4 / "dist" / "validation-report.json").read_text(encoding="utf-8"))
             ck("a skipped validator is recorded as SKIPPED, not omitted",
                rep.get("checks", {}).get("project_validate_py") == "skipped", json.dumps(rep))
+
+        # --- gate 0g: a field the engine does not read on THIS entry type ----------
+        # AVERNUS_ZARIELS_FAVOR shipped as a decorative icon on 2026-09-08 carrying
+        # StatsFunctorContext/Conditions/StatsFunctors on a StatusData - 678/647/785
+        # shipped uses on PassiveData, ZERO on StatusData. Every other gate passed it:
+        # the name is real, the syntax parses, validate.py is happy, and the feature
+        # simply never runs. These controls exist because that is invisible otherwise.
+        ws5 = make_workspace(Path(tempfile.mkdtemp(prefix="build_acc_", dir=root)))
+        rc, out = run_build(ws5, good)
+        ck("gate 0g runs on a clean workspace", "[0g/6]" in out, out[-600:])
+        clean_ok = rc == 0
+        ck("...and a clean workspace still builds", clean_ok, out[-600:])
+
+        # THE FAULT. StatsFunctorContext is real, spelled right, and attested 678
+        # times - just never on a StatusData. Nothing but 0g can see this.
+        # Clear dist first. The clean build above already produced a pak, so without
+        # this the "ships no pak" control passes on a LEFTOVER and would never fail.
+        shutil.rmtree(ws5 / "dist", ignore_errors=True)
+        d5 = ws5 / "Public" / "Fixture" / "Stats" / "Generated" / "Data"
+        (d5 / "Status_BOOST.txt").write_text(
+            'new entry "Fixture_Status"\ntype "StatusData"\n'
+            'data "StatusType" "BOOST"\ndata "DisplayName" "h11111111"\n'
+            'data "StatsFunctorContext" "OnDamage"\n', encoding="utf-8")
+        rc, out = run_build(ws5, good)
+        ck("gate 0g REFUSES a field on the wrong entry type", rc != 0, out[-800:])
+        ck("...and names the field", "StatsFunctorContext" in out, out[-800:])
+        ck("...and says where it DOES live", "PassiveData" in out, out[-800:])
+        ck("...and ships no pak", not (ws5 / "dist" / "Fixture.pak").exists(), out[-400:])
+
+        # THE FAILURE MODE THIS HARNESS IS FOR. Gate 0f broke on its first run by
+        # treating "could not check" as "found a fault". 2 must WARN, never block -
+        # otherwise the gate wedges every build on a machine with no unpacked game
+        # data, and the fix people reach for is to delete the gate. Fault-inject an
+        # audit that reports it could not look.
+        (d5 / "Status_BOOST.txt").unlink()
+        stub = Path(BUILD).parent / "wrongtype_audit.py"
+        keep = stub.read_bytes()
+        try:
+            stub.write_text("import sys\nprint('fixture: corpus absent')\nsys.exit(2)\n",
+                            encoding="utf-8")
+            rc, out = run_build(ws5, good)
+            ck("exit 2 does NOT block the build (could-not-check != fault)",
+               rc == 0, out[-800:])
+            ck("...and exit 2 is reported as NOT CHECKED, not as a pass",
+               "NOT CHECKED" in out and "This is not a pass" in out, out[-800:])
+        finally:
+            stub.write_bytes(keep)
+
+        # A gate that reads the caller's shell is not a gate. build.ps1 set no working
+        # directory, so the python gates located the mod from wherever the caller
+        # stood: the same tree passed from inside the mod folder and failed from the
+        # Toolkit root with "cannot locate this mod". Found 2026-09-08 after two runs
+        # of an UNCHANGED tree disagreed, and it was blamed on a stale cache first.
+        # The fixture's own validator reports the directory it was RUN IN. That is the
+        # behaviour under test - not what build.ps1's source says, which would prove
+        # only that the config declares an intention. A first draft of this control ran
+        # the build from an unrelated cwd and asserted rc == 0; it PASSED against a
+        # mutant with the Push-Location removed, because nothing in the fixture cared
+        # where it stood. A control that survives its own mutation is not a control.
+        (ws5 / "tools" / "validate.py").write_text(
+            "import os, sys" + chr(10) +
+            "print('fixture validator cwd=' + os.getcwd())" + chr(10) +
+            "sys.exit(0)" + chr(10), encoding="utf-8")
+        elsewhere = Path(tempfile.mkdtemp(prefix="build_acc_cwd_", dir=root))
+        cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(BUILD),
+               "-Workspace", str(ws5), "-DivinePath", str(good),
+               "-SkipSelfTest", "-SkipDeploy"]
+        pr = subprocess.run(cmd, capture_output=True, text=True, errors="replace",
+                            timeout=300, cwd=str(elsewhere))
+        cwd_out = (pr.stdout or "") + (pr.stderr or "")
+        ck("the build does not depend on the caller's working directory",
+           pr.returncode == 0 and clean_ok, cwd_out[-800:])
+        ck("...and the gates RAN IN the workspace, not the caller's directory",
+           ("fixture validator cwd=" + str(ws5)) in cwd_out, cwd_out[-800:])
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
