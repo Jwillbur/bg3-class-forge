@@ -277,6 +277,32 @@ if (-not $SkipValidate) {
         }
     }
 
+    # ⭐ SHAPESHIFT RULES. A POLYMORPHED status keeps exactly what its `Rules`
+    # resource permits. A missing `Rules` field takes an undocumented engine
+    # default; a MISSPELLED rule attribute is ignored rather than rejected, so the
+    # only symptom is a screenshot. Oath of Avernus shipped polymorphs with no
+    # `Rules` at all for a day and every other gate passed them.
+    # Unconditional, unlike the animation gate: a mod with no polymorphs reports
+    # "0 checked" and costs nothing, so there is no existing build to redefine.
+    Write-Host "[0f/6] Checking shapeshift rules..." -ForegroundColor Yellow
+    $ss = Join-Path $PSScriptRoot "shapeshift_audit.py"
+    if (Test-Path $ss) {
+        & py $ss
+        # ⚠ 1 and 2 are DIFFERENT ANSWERS and conflating them broke this gate on
+        # its first run. 1 = it looked and found a fault. 2 = it could not look,
+        # usually because the game data is not unpacked on this machine. Only the
+        # first is a reason to refuse to build.
+        if ($LASTEXITCODE -eq 1) {
+            throw "shapeshift_audit failed - see the errors above. A polymorph with a bad or missing Rules reference does not fail loudly in game; it just keeps the wrong things."
+        } elseif ($LASTEXITCODE -ne 0) {
+            Write-Host "  NOT CHECKED - shapeshift rules were not verified (exit $LASTEXITCODE). This is not a pass." -ForegroundColor Yellow
+        } else {
+            Write-Host "  ok" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "  shapeshift_audit.py not found beside build.ps1 - NOT CHECKED" -ForegroundColor Yellow
+    }
+
     # sim.py runs the the mod's own functors against a scripted fight - a plain attack, a
     # status landing on the player, three hits into a detonation. Every Spatial Debt
     # regression so far cost a game launch to find, and three of them were visible in

@@ -10,6 +10,34 @@ landed upstream**, which is why a release here can be days newer than the last c
 
 ---
 
+## 2026-09-07
+
+**`shapeshift_audit.py` (new) — the forge can check a polymorph now.**
+
+A `POLYMORPHED` status keeps exactly what its `Rules` resource permits, and nothing
+in this framework had ever looked at that field. Oath of Avernus shipped two
+polymorph statuses with **no `Rules` field at all** for a day and every other gate
+passed them.
+
+The check: every attribute in a mod's own `Shapeshift/Rulebook.lsx` must be one of
+the 42 the engine actually reads (**a misspelled attribute is IGNORED, not
+rejected** — `DisableEquipmentSlot` parses fine and does nothing); every `Rules`
+GUID must resolve to a shipped or mod-defined rule; no mod rule may collide with a
+shipped UUID; every polymorph needs a `TemplateID`; and `SG_Polymorph` missing from
+`StatusGroups` warns, because without it nothing in the game treats the form as a
+form. `--list` prints all 83 shipped rules and what each one strips.
+
+**`shapeshift_acceptance.py` (new)** — 15 controls, six of them injected faults.
+A gate that has never failed has never been tested, and this repo has been burned
+by that twice.
+
+⛔ **And it broke `build.ps1` on its first wiring, exactly as the last new gate
+did.** The fixture mod's `forge.json` is `{"name": "Fixture"}`, so it has no
+unpacked game data, the audit returned 2 for *"could not check"*, and the build
+threw on any non-zero. **Exit 1 and exit 2 are different answers.** The audit now
+declines to demand the corpus from a mod with no polymorphs, and step `[0f/6]`
+throws only on 1 and prints a loud NOT CHECKED on anything else.
+
 ## 2026-09-06
 
 **`forge/` is the single home for the audits now.** Seventeen tools moved out of
