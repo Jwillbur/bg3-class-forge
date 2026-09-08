@@ -143,6 +143,16 @@ if ([string]::IsNullOrWhiteSpace($ModName)) {
 $DistDir   = Join-Path $Workspace 'dist'
 $OutPak    = Join-Path $DistDir "$ModName.pak"
 $ModsDir   = Join-Path $env:LOCALAPPDATA "Larian Studios\Baldur's Gate 3\Mods"
+
+# ⛔ THE PYTHON GATES LOCATE THE MOD FROM THE CURRENT DIRECTORY, NOT FROM
+# -Workspace. Nothing here set one, so every gate ran wherever the CALLER happened
+# to be standing: the same build passed from inside the mod folder and failed from
+# C:\Modding\Toolkit with "cannot locate this mod: no forge.json at or above ...".
+# Found 2026-09-08 after two consecutive runs of an unchanged tree disagreed - and
+# a gate whose verdict depends on the caller's shell is not a gate.
+# Pop-Location is in a finally so a thrown gate does not strand the caller.
+Push-Location -LiteralPath $Workspace
+try {
 # -----------------------------------------------------------------------------
 
 Write-Host "`n=== $ModName build ===" -ForegroundColor Cyan
@@ -301,6 +311,31 @@ if (-not $SkipValidate) {
         }
     } else {
         Write-Host "  shapeshift_audit.py not found beside build.ps1 - NOT CHECKED" -ForegroundColor Yellow
+    }
+
+    # A field the engine does not read on THIS entry type is invisible to every other
+    # gate here: the name is real, the syntax parses, validate.py is happy, and the
+    # feature simply never runs. AVERNUS_ZARIELS_FAVOR carried StatsFunctorContext,
+    # Conditions and StatsFunctors on a StatusData - 678/647/785 shipped uses on
+    # PassiveData, ZERO on StatusData - and shipped as a decorative icon.
+    # The majority sweep cannot find these: it compares an entry to its peers OF THE
+    # SAME TYPE, so a field that belongs to no peer is simply never counted.
+    Write-Host "[0g/6] Checking for fields on the wrong entry type..." -ForegroundColor Yellow
+    $wt = Join-Path $PSScriptRoot "wrongtype_audit.py"
+    if (Test-Path $wt) {
+        & py $wt $Workspace
+        # ⚠ 1 and 2 are DIFFERENT ANSWERS. 1 = it looked and found a field the engine
+        # will not read. 2 = the unpacked game data is missing, so it could not look.
+        # Conflating them is what broke the 0f gate on its first run.
+        if ($LASTEXITCODE -eq 1) {
+            throw "wrongtype_audit failed - see above. A field on the wrong entry type is silently ignored in game; the feature just never fires."
+        } elseif ($LASTEXITCODE -ne 0) {
+            Write-Host "  NOT CHECKED - entry types were not verified (exit $LASTEXITCODE). This is not a pass." -ForegroundColor Yellow
+        } else {
+            Write-Host "  ok" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "  wrongtype_audit.py not found beside build.ps1 - NOT CHECKED" -ForegroundColor Yellow
     }
 
     # sim.py runs the the mod's own functors against a scripted fight - a plain attack, a
@@ -688,3 +723,6 @@ Write-Host "Load order relative to Compatibility Framework does NOT matter: CF's
 Write-Host "LoadConfigFiles() iterates Ext.Mod.GetLoadOrder() and scans every mod," -ForegroundColor Cyan
 Write-Host "and its subclass auto-detection reads ALL ClassDescriptions. Verified in" -ForegroundColor Cyan
 Write-Host "CF 2.9.0.0 source, 2026-08-09.`n" -ForegroundColor Cyan
+} finally {
+    Pop-Location
+}
