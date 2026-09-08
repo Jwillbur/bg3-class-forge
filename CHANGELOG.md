@@ -10,6 +10,49 @@ landed upstream**, which is why a release here can be days newer than the last c
 
 ---
 
+## 2026-09-08
+
+**`wrongtype_audit.py` (new) - a field the engine does not read on THIS entry type.**
+
+The name is real, the syntax parses, `validate.py` is happy, and the feature simply never
+runs. Oath of Avernus shipped a status buff whose three working fields
+(`StatsFunctorContext`, `Conditions`, `StatsFunctors`) sit on `PassiveData` **678 / 647 /
+785** times in the shipped data and on `StatusData` **zero** times. It applied, showed its
+icon, ran its duration, and did nothing.
+
+⭐ **A majority sweep cannot find this.** It compares an entry to its peers of the same
+type, so a field that belongs to no peer is never counted. This asks whether the field is
+attested on the type at all.
+
+Covers both surfaces: stats `.txt` (`data "Field"` keyed by the entry's `type`) and `.lsx`
+(`<attribute id>` keyed by the containing `<node id>`). It **prints its own coverage and
+names everything it could not check** - a clean run over a corpus that was not read is not
+a pass. `meta.lsx` is a documented blind spot: vanilla ships 5 module metas and none has a
+`<TargetModes>` node, but released Warpblade does.
+
+⚠ **It invented 17 findings on its first run** against a released, live-tested mod, from
+an `EffectInfo` pool of 18 nodes across 9 files - vanilla's effect banks are binary `.lsf`
+this corpus does not decode. The LSX threshold is **50**, not 10, for that reason.
+
+**Wired into `build.ps1` as gate `[0g/6]`**, keeping the exit split that broke gate `0f` on
+its first run: **1 = it looked and found a fault (block); 2 = it could not look (warn, and
+say "This is not a pass")**.
+
+**`build.ps1` - the Python gates ran in the caller's working directory.** Nothing set one,
+so the same tree passed from inside a mod folder and failed from elsewhere with "cannot
+locate this mod". A gate whose verdict depends on the caller's shell is not a gate. Now
+`Push-Location $Workspace` with a `finally { Pop-Location }` so a thrown gate cannot strand
+the caller.
+
+**`build_acceptance.py` - 8 new controls, every one mutation-tested.** Three mutations
+(gate warns instead of throwing; exit 2 conflated with exit 1; `Push-Location` pointed
+elsewhere) each kill at least one control. **Two controls were wrong on first write:** one
+passed on a pak left over from the preceding clean build, and the cwd control **survived
+its own mutant** because it only asserted `rc == 0`. It now asserts where the gate actually
+RAN, via a fixture validator that prints its own `os.getcwd()`. 36 passed, 0 failed.
+
+---
+
 ## 2026-09-07
 
 **`shapeshift_audit.py` (new) — the forge can check a polymorph now.**
