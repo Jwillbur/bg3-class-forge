@@ -305,17 +305,19 @@ def main() -> int:
         ck("...and a clean workspace still builds", rc == 0, out[-600:])
         d6 = ws6 / "Public" / "Fixture" / "Stats" / "Generated" / "Data"
 
-        # CLASS 1: an Icon name that exists nowhere in the shipped data. Nothing else
-        # here can tell a real icon name from an invented one - the field is present,
-        # the syntax is right, and the game draws a blank square.
+        # CLASS 1: a Properties flag attested nowhere. NOT an Icon - an icon is a
+        # global namespace and a mod may declare its own in a binary atlas nothing here
+        # can read, so 0h reports icons as a NOTE and never blocks on one. This control
+        # faulted a bogus ICON at first and went green against a gate that had stopped
+        # blocking it: a control must fault the thing the gate actually refuses.
         shutil.rmtree(ws6 / "dist", ignore_errors=True)
         (d6 / "Passive.txt").write_text(
             'new entry "Fixture_Passive"\ntype "PassiveData"\n'
             'data "DisplayName" "h11111111"\n'
-            'data "Icon" "PassiveFeature_NoSuchIconAnywhere"\n', encoding="utf-8")
+            'data "Properties" "NoSuchPropertyAnywhere"\n', encoding="utf-8")
         rc, out = run_build(ws6, good)
         ck("gate 0h REFUSES a value attested nowhere", rc != 0, out[-800:])
-        ck("...and names the value", "PassiveFeature_NoSuchIconAnywhere" in out, out[-800:])
+        ck("...and names the value", "NoSuchPropertyAnywhere" in out, out[-800:])
         ck("...and ships no pak", not (ws6 / "dist" / "Fixture.pak").exists(), out[-400:])
 
         # CLASS 2: a functor naming a status that is in neither the corpus nor the mod.
