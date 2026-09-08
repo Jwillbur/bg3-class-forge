@@ -293,6 +293,58 @@ def main() -> int:
            pr.returncode == 0 and clean_ok, cwd_out[-800:])
         ck("...and the gates RAN IN the workspace, not the caller's directory",
            ("fixture validator cwd=" + str(ws5)) in cwd_out, cwd_out[-800:])
+
+        # --- gate 0h: unattested values, dangling names, wrong carrier -------------
+        # Every shape here is a bug a LIVE TEST found on 2026-09-08 after every static
+        # gate in this file had passed the mod. The six spell lists used `Comment`,
+        # which appears 0 times in 358 shipped SpellList nodes; seven passives named no
+        # Icon and drew blank squares. Both parse, both validate, both are ignored.
+        ws6 = make_workspace(Path(tempfile.mkdtemp(prefix="build_acc_", dir=root)))
+        rc, out = run_build(ws6, good)
+        ck("gate 0h runs on a clean workspace", "[0h/6]" in out, out[-600:])
+        ck("...and a clean workspace still builds", rc == 0, out[-600:])
+        d6 = ws6 / "Public" / "Fixture" / "Stats" / "Generated" / "Data"
+
+        # CLASS 1: an Icon name that exists nowhere in the shipped data. Nothing else
+        # here can tell a real icon name from an invented one - the field is present,
+        # the syntax is right, and the game draws a blank square.
+        shutil.rmtree(ws6 / "dist", ignore_errors=True)
+        (d6 / "Passive.txt").write_text(
+            'new entry "Fixture_Passive"\ntype "PassiveData"\n'
+            'data "DisplayName" "h11111111"\n'
+            'data "Icon" "PassiveFeature_NoSuchIconAnywhere"\n', encoding="utf-8")
+        rc, out = run_build(ws6, good)
+        ck("gate 0h REFUSES a value attested nowhere", rc != 0, out[-800:])
+        ck("...and names the value", "PassiveFeature_NoSuchIconAnywhere" in out, out[-800:])
+        ck("...and ships no pak", not (ws6 / "dist" / "Fixture.pak").exists(), out[-400:])
+
+        # CLASS 2: a functor naming a status that is in neither the corpus nor the mod.
+        shutil.rmtree(ws6 / "dist", ignore_errors=True)
+        (d6 / "Passive.txt").write_text(
+            'new entry "Fixture_Passive"\ntype "PassiveData"\n'
+            'data "DisplayName" "h11111111"\n'
+            'data "StatsFunctorContext" "OnDamage"\n'
+            'data "StatsFunctors" "ApplyStatus(SELF, FIXTURE_NO_SUCH_STATUS, 100, 1)"\n',
+            encoding="utf-8")
+        rc, out = run_build(ws6, good)
+        ck("gate 0h REFUSES an identifier that resolves nowhere", rc != 0, out[-800:])
+        ck("...and names the identifier", "FIXTURE_NO_SUCH_STATUS" in out, out[-800:])
+
+        # The exit split again. 0f broke by treating "could not check" as "found a
+        # fault", which wedges every build on a machine with no unpacked game data -
+        # and the fix people reach for is to delete the gate.
+        (d6 / "Passive.txt").write_text(PASSIVE, encoding="utf-8")
+        stub = Path(BUILD).parent / "class_sweep.py"
+        keep = stub.read_bytes()
+        try:
+            stub.write_text("import sys\nprint('fixture: corpus absent')\nsys.exit(2)\n",
+                            encoding="utf-8")
+            rc, out = run_build(ws6, good)
+            ck("0h exit 2 does NOT block the build", rc == 0, out[-800:])
+            ck("...and 0h exit 2 reads as NOT CHECKED, not as a pass",
+               "NOT CHECKED" in out and "This is not a pass" in out, out[-800:])
+        finally:
+            stub.write_bytes(keep)
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

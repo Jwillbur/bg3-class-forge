@@ -338,6 +338,34 @@ if (-not $SkipValidate) {
         Write-Host "  wrongtype_audit.py not found beside build.ps1 - NOT CHECKED" -ForegroundColor Yellow
     }
 
+    # Three shapes, each one a bug a LIVE TEST found on 2026-09-08 after every static
+    # gate here had passed the file:
+    #   1 a value not attested for that field - the six spell lists used `Comment`,
+    #     which appears 0 times in 358 shipped SpellList nodes, and an Icon name that
+    #     does not exist draws a blank square on the character sheet.
+    #   2 an identifier that resolves nowhere - a functor naming a status that is in
+    #     neither the corpus nor our own files is a silent no-op.
+    #   3 a feature on the wrong CARRIER - the aura applied itself from a passive on
+    #     OnCreate; every shipped paladin aura is a free clickable Shout at duration -1.
+    #     Class 3 is a NOTE, never a failure: it is a judgement call, not a fault.
+    Write-Host "[0h/6] Checking value vocabularies and identifiers..." -ForegroundColor Yellow
+    $cs = Join-Path $PSScriptRoot "class_sweep.py"
+    if (Test-Path $cs) {
+        & py $cs $Workspace
+        # ⚠ 1 and 2 are DIFFERENT ANSWERS - see gate 0f, which broke by conflating them.
+        # 1 = it looked and found an unattested value or a dangling name.
+        # 2 = the unpacked game data is missing, so it could not look at all.
+        if ($LASTEXITCODE -eq 1) {
+            throw "class_sweep failed - see above. An unattested value or a name that resolves nowhere parses fine and is then ignored in game."
+        } elseif ($LASTEXITCODE -ne 0) {
+            Write-Host "  NOT CHECKED - values and identifiers were not verified (exit $LASTEXITCODE). This is not a pass." -ForegroundColor Yellow
+        } else {
+            Write-Host "  ok" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "  class_sweep.py not found beside build.ps1 - NOT CHECKED" -ForegroundColor Yellow
+    }
+
     # sim.py runs the the mod's own functors against a scripted fight - a plain attack, a
     # status landing on the player, three hits into a detonation. Every Spatial Debt
     # regression so far cost a game launch to find, and three of them were visible in

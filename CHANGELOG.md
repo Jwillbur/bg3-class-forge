@@ -10,6 +10,31 @@ landed upstream**, which is why a release here can be days newer than the last c
 
 ---
 
+## 2026-09-08 (b)
+
+**`class_sweep.py` (new), wired as gate `[0h/6]` — three shapes that parse, validate, and
+are then ignored by the engine.**
+
+Every one of these is a bug a **live test** found on 2026-09-08, after every static gate in
+this framework had passed the file. That is the whole reason the tool exists.
+
+| Class | What it asks | The instance |
+|---|---|---|
+| 1 | is this VALUE attested for this field? | six spell lists used `Comment`, which appears **0 times** in 358 shipped `SpellList` nodes; and an `Icon` name that exists nowhere draws a blank square |
+| 2 | does this IDENTIFIER resolve? | a functor naming a status that is in neither the corpus nor the mod is a silent no-op |
+| 3 | is this feature on the right CARRIER? | an aura applied from a passive on `OnCreate`; every shipped paladin aura is a **free clickable Shout** at duration `-1` |
+
+⚠ **Class 3 is a NOTE, never a failure.** It is a judgement call about design, not a fault,
+and a gate that blocks on judgement gets deleted.
+
+Checks 20 field vocabularies built from the shipped data. It **refuses with exit 2 if the
+corpus reads short** — a clean run over data that was not read is not a pass.
+
+**`build_acceptance.py` — 7 new controls, both mutations killed.** Making the gate warn
+instead of throw kills 3; conflating exit 2 with exit 1 kills 2. **45 passed, 0 failed.**
+
+---
+
 ## 2026-09-08
 
 **`wrongtype_audit.py` (new) - a field the engine does not read on THIS entry type.**
