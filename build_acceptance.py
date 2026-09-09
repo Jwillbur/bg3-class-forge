@@ -371,6 +371,22 @@ def main() -> int:
         ck("...and names the context it is absent from", "OnDamage" in out, out[-900:])
         ck("...and ships no pak", not (ws7 / "dist" / "Fixture.pak").exists(), out[-400:])
 
+        # ⛔ THE SAME FAULT WITH THE FIELDS IN THE OTHER ORDER. context_audit read each
+        # field as it went, so `StatsFunctors` written ABOVE `StatsFunctorContext` was
+        # measured with no context and the whole layer skipped it - silently, and it
+        # skipped LEARNING those vocabularies too, so 55 of them did not exist. Field
+        # order in a stats entry is arbitrary and this control keeps it that way.
+        shutil.rmtree(ws7 / "dist", ignore_errors=True)
+        (d7 / "Passive.txt").write_text(
+            'new entry "Fixture_Passive"\ntype "PassiveData"\n'
+            'data "DisplayName" "h11111111"\n'
+            'data "StatsFunctors" "ApplyStatus(BURNING,100,2,,,,not SavingThrow(Ability.Constitution,SourceSpellDC()))"\n'
+            'data "StatsFunctorContext" "OnDamage"\n',
+            encoding="utf-8")
+        rc, out = run_build(ws7, good)
+        ck("gate 0i catches it with the context declared BELOW the field", rc != 0,
+           out[-900:])
+        ck("...and still names the function", "SourceSpellDC" in out, out[-900:])
         # The exit split, a third time. 0f broke by treating "could not check" as
         # "found a fault", which wedges every build on a machine with no game data.
         (d7 / "Passive.txt").write_text(PASSIVE, encoding="utf-8")

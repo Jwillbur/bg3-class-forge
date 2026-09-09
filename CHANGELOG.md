@@ -10,6 +10,44 @@ landed upstream**, which is why a release here can be days newer than the last c
 
 ---
 
+## 2026-09-08 (f)
+
+**A full pass with `context_audit.py` found three bugs in `context_audit.py`.**
+
+It reported 0 findings and 7 NOT CHECKED on Oath of Avernus. Opening the seven gaps
+instead of accepting the zero is what turned them up.
+
+⛔ **1. Field ORDER decided whether the context layer saw a field.** The parser
+evaluated each line as it read it, so a field written ABOVE `StatsFunctorContext` was
+measured with no context and skipped. `Avernus_HellfireMastery` declares `Boosts` first
+and vanished from the check - and the corpus pass skipped LEARNING those vocabularies
+too, so **55 of the 194 context vocabularies did not exist**. Field order in a stats
+entry is arbitrary. Now a second pass evaluates each entry once it is fully read.
+
+⛔ **2. A small pool skipped functions it DID contain.** All seven NOT CHECKED buckets
+held nothing but `DealDamage`, `max` and `ApplyStatus`, every one attested where it sat.
+**Presence is proof; only ABSENCE needs a big pool.** The gate now reports per function
+rather than blanket-skipping a bucket, and the mod goes to **0 gaps**.
+
+⛔ **3. The context layer applied to `Boosts`, which is a category error.**
+`StatsFunctorContext` says WHEN functors run - it governs `StatsFunctors` and the
+`Conditions` that gate them, and nothing else. A passive's `Boosts` are permanent and
+independent. Pairing them produced **two confident false findings** against
+`Avernus_HellfireMastery`: `CriticalHit()` and `IgnoreResistance()`, both correct.
+`CONTEXT_FIELDS` now names the two fields the context actually governs.
+
+⚠ **That third one is the same mistake the gate exists to catch** - a real thing
+applied at the wrong scope - made inside the gate itself.
+
+⭐ **Regression: all three of the day's real bugs are still caught** after the
+tightening - `SourceSpellDC()` in `OnDamage`, `HasPassive()` in `RequirementConditions`,
+`GetActiveWeapon()` in a `Boosts` field. Exit 1.
+
+**New control: the same fault with the context declared BELOW the field it governs.**
+Reverting the second pass kills **6 controls**. 55 passed, 0 failed.
+
+---
+
 ## 2026-09-08 (e)
 
 **`context_audit.py` (new), gate `[0i/6]` - is this function used in THIS place?**

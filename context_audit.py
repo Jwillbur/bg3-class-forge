@@ -40,6 +40,13 @@ MIN_POOL = 12
 # And the function itself has to be common enough that its absence here is a signal
 # rather than a gap in the corpus.
 MIN_GLOBAL = 20
+# ⛔ THE CONTEXT LAYER APPLIES TO THESE FIELDS ONLY. StatsFunctorContext says WHEN the
+# functors run - it governs StatsFunctors and the Conditions that gate them, and NOTHING
+# else. A passive's Boosts are permanent and independent of it. Pairing (context, Boosts)
+# is a category error, and it produced two confident false findings against
+# Avernus_HellfireMastery - CriticalHit() and IgnoreResistance(), both perfectly correct
+# in a Boosts field, flagged only because that passive also happens to declare OnAttack.
+CONTEXT_FIELDS = {'StatsFunctors', 'Conditions'}
 
 FN = re.compile(r'([A-Za-z_][A-Za-z0-9_]{2,})\s*\(')
 # Not functions: damage types, ability names and the like never take arguments in a
@@ -53,6 +60,7 @@ def scan(paths, learn):
     ctx = collections.defaultdict(collections.Counter)
     glob_ct = collections.Counter()
     mine = []
+    entries = []
     for f in paths:
         cur = None
         for line in Path(f).read_text(encoding='utf8', errors='replace').splitlines():
@@ -74,16 +82,24 @@ def scan(paths, learn):
             if k == 'StatsFunctorContext':
                 cur['ctx'] = v.strip()
             fns = {x for x in FN.findall(v) if x not in SKIP}
-            if not fns:
-                continue
-            if learn:
-                for fn in fns:
-                    pair[(cur['type'], k)][fn] += 1
-                    glob_ct[fn] += 1
-                    if cur['ctx']:
-                        ctx[(cur['ctx'], k)][fn] += 1
-            else:
+            if fns:
                 cur['data'].append((k, v, fns))
+            if learn:
+                entries.append(cur)
+    # ⛔ SECOND PASS, AND IT IS NOT OPTIONAL. The first version evaluated each field
+    # as it was read, so a field written ABOVE `StatsFunctorContext` was measured with
+    # cur['ctx'] still None and the context layer never saw it. Avernus_HellfireMastery
+    # declares Boosts before its context and was silently skipped - the gate reported
+    # (OnAttack, Boosts) as an empty vocabulary because it had never learned one either.
+    # Field order in a stats entry is arbitrary; the audit must not depend on it.
+    if learn:
+        for e in entries:
+            for k, v, fns in e['data']:
+                for fn in fns:
+                    pair[(e['type'], k)][fn] += 1
+                    glob_ct[fn] += 1
+                    if e['ctx'] and k in CONTEXT_FIELDS:
+                        ctx[(e['ctx'], k)][fn] += 1
     return pair, ctx, glob_ct, mine
 
 
@@ -107,20 +123,29 @@ for e in mine:
     for k, v, fns in e['data']:
         for layer, key, label in (
                 ('type', (e['type'], k), e['type']),
-                ('ctx', (e['ctx'], k) if e['ctx'] else None,
+                ('ctx', (e['ctx'], k) if (e['ctx'] and k in CONTEXT_FIELDS) else None,
                  'StatsFunctorContext ' + (e['ctx'] or ''))):
             if key is None:
                 continue
-            pool = (pair if layer == 'type' else ctx).get(key)
-            if not pool or len(pool) < MIN_POOL:
-                if key not in seen_gap:
-                    seen_gap.add(key)
-                    notchecked += 1
-                    print('  ?? %-46s only %d function(s) known - NOT CHECKED'
-                          % ('%s / %s' % (key[0], key[1]), len(pool or ())))
-                continue
+            pool = (pair if layer == 'type' else ctx).get(key) or collections.Counter()
             for fn in sorted(fns):
-                if pool[fn] or glob_ct[fn] < MIN_GLOBAL:
+                # A function PRESENT in the vocabulary is attested here, however small
+                # that vocabulary is - presence is proof, and only ABSENCE needs a big
+                # pool to mean anything. The first version skipped the whole bucket on
+                # size and reported seven blanket gaps that held nothing but DealDamage,
+                # max and ApplyStatus, every one of them attested.
+                if pool[fn]:
+                    continue
+                if len(pool) < MIN_POOL:
+                    tag = (key, fn)
+                    if tag not in seen_gap:
+                        seen_gap.add(tag)
+                        notchecked += 1
+                        print('  ?? %-40s %s() - only %d function(s) known there, so its '
+                              'absence proves nothing. NOT CHECKED.'
+                              % ('%s / %s' % (key[0], key[1]), fn, len(pool)))
+                    continue
+                if glob_ct[fn] < MIN_GLOBAL:
                     continue
                 findings += 1
                 print('  %s' % e['name'])
