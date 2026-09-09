@@ -56,6 +56,33 @@ def shipped_rulebooks(unpacked: Path) -> list[Path]:
     return sorted(unpacked.rglob("Shapeshift/Rulebook.lsx"))
 
 
+def known_templates(unpacked: Path, public: Path) -> set:
+    """Every character template MapKey the game or this mod defines.
+
+    ⛔ WHY. This audit checked that a POLYMORPHED status HAS a TemplateID and never
+    that the TemplateID RESOLVES. On 2026-09-08 a live test found the male Cambion
+    Form made the character DISAPPEAR COMPLETELY, and the female form was perfect -
+    a template problem that every gate here passed. A GUID that resolves to nothing
+    is exactly as silent, and typing one is one keystroke away.
+
+    Reads the unpacked LSX mirror when there is one, because RootTemplates ship as
+    binary .lsf and only the converted copy is greppable.
+    """
+    seen: set = set()
+    roots = [public]
+    lsx = Path(str(unpacked) + "_lsx")
+    roots.append(lsx if lsx.is_dir() else unpacked)
+    for root in roots:
+        if not root or not Path(root).is_dir():
+            continue
+        for f in Path(root).rglob("RootTemplates/*.lsx"):
+            try:
+                text = f.read_text(encoding="utf8", errors="replace")
+            except OSError:
+                continue
+            seen |= set(re.findall(r'id="MapKey"[^>]*value="([^"]+)"', text))
+    return seen
+
 def parse_rules(text: str) -> list[dict]:
     """Every <node id="Rule"> as {attr: value}, header attributes only."""
     out = []
@@ -106,6 +133,12 @@ def main() -> int:
         print("  no POLYMORPHED statuses and no Rulebook.lsx - nothing to check.")
         return 0
 
+    templates = known_templates(unpacked, cfg.public)
+    if templates:
+        print(f"  {len(templates):,} character template(s) known")
+    else:
+        print("  !! NO character templates could be read - TemplateID values are "
+              "NOT CHECKED. That is a gap, not a pass.")
     books = shipped_rulebooks(unpacked)
     if not books:
         print(f"no shipped Rulebook.lsx under {unpacked} - cannot check anything.",
@@ -190,8 +223,13 @@ def main() -> int:
             elif rules.lower() not in shipped and rules.lower() not in mine:
                 err(f"{name}: Rules {rules} is neither shipped nor defined by this "
                     f"mod. The status will not find it.")
-            if not e.get("TemplateID"):
+            tid = e.get("TemplateID")
+            if not tid:
                 err(f"{name}: POLYMORPHED with no TemplateID - nothing to become.")
+            elif templates and tid.strip() not in templates:
+                err(f"{name}: TemplateID {tid} resolves to no character template, "
+                    f"ours or shipped. The transformation has nothing to become and "
+                    f"the character can simply vanish.")
             if "SG_Polymorph" not in (e.get("StatusGroups") or ""):
                 warn(f"{name}: StatusGroups omits SG_Polymorph. Dispels, dialogue "
                      f"drops and any `HasStatus('SG_Polymorph')` gate will miss it.")

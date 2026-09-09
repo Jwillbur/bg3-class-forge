@@ -10,6 +10,30 @@ landed upstream**, which is why a release here can be days newer than the last c
 
 ---
 
+## 2026-09-08 (d)
+
+**`shapeshift_audit.py` checked that a POLYMORPHED status HAS a TemplateID and never
+that the TemplateID RESOLVES.**
+
+⛔ On 2026-09-08 a live test found the male Cambion Form made the character
+**disappear completely** while the female form was perfect. That was a template
+problem, and every gate in this framework passed it. A GUID that resolves to nothing
+is exactly as silent as a wrong one, and typing one is a single keystroke.
+
+`known_templates()` collects every character-template `MapKey` from the mod's own
+`RootTemplates/*.lsx` and from the unpacked game - **25,698 of them** on this machine.
+It reads the converted LSX mirror when there is one, because RootTemplates ship as
+binary `.lsf` and only the converted copy is greppable.
+
+Fault-injected: a one-character change to a TemplateID now fails with
+*"resolves to no character template, ours or shipped"* and exit 1. Verified restored
+to exit 0.
+
+⚠ **When no templates can be read it says so and does not check** - "That is a gap,
+not a pass" - rather than reporting clean over an unread corpus.
+
+---
+
 ## 2026-09-08 (c)
 
 **`ref_closure.py` could not see `Equipment.txt`, so a mod's character-creation kit was
