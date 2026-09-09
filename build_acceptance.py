@@ -347,6 +347,44 @@ def main() -> int:
                "NOT CHECKED" in out and "This is not a pass" in out, out[-800:])
         finally:
             stub.write_bytes(keep)
+
+        # --- gate 0i: a real function in the wrong context --------------------------
+        # The fault below is a VERBATIM REPLAY of a bug that shipped on 2026-09-08.
+        # SourceSpellDC() has 377 uses and is perfectly real; in a weapon-triggered
+        # OnDamage passive there is no source spell to read, so the save auto-failed
+        # and the effect landed every time. Zero shipped uses in that context.
+        ws7 = make_workspace(Path(tempfile.mkdtemp(prefix="build_acc_", dir=root)))
+        rc, out = run_build(ws7, good)
+        ck("gate 0i runs on a clean workspace", "[0i/6]" in out, out[-600:])
+        ck("...and a clean workspace still builds", rc == 0, out[-600:])
+        d7 = ws7 / "Public" / "Fixture" / "Stats" / "Generated" / "Data"
+        shutil.rmtree(ws7 / "dist", ignore_errors=True)
+        (d7 / "Passive.txt").write_text(
+            'new entry "Fixture_Passive"\ntype "PassiveData"\n'
+            'data "DisplayName" "h11111111"\n'
+            'data "StatsFunctorContext" "OnDamage"\n'
+            'data "StatsFunctors" "ApplyStatus(BURNING,100,2,,,,not SavingThrow(Ability.Constitution,SourceSpellDC()))"\n',
+            encoding="utf-8")
+        rc, out = run_build(ws7, good)
+        ck("gate 0i REFUSES a function used in the wrong context", rc != 0, out[-900:])
+        ck("...and names the function", "SourceSpellDC" in out, out[-900:])
+        ck("...and names the context it is absent from", "OnDamage" in out, out[-900:])
+        ck("...and ships no pak", not (ws7 / "dist" / "Fixture.pak").exists(), out[-400:])
+
+        # The exit split, a third time. 0f broke by treating "could not check" as
+        # "found a fault", which wedges every build on a machine with no game data.
+        (d7 / "Passive.txt").write_text(PASSIVE, encoding="utf-8")
+        stub = Path(BUILD).parent / "context_audit.py"
+        keep = stub.read_bytes()
+        try:
+            stub.write_text("import sys\nprint('fixture: corpus absent')\nsys.exit(2)\n",
+                            encoding="utf-8")
+            rc, out = run_build(ws7, good)
+            ck("0i exit 2 does NOT block the build", rc == 0, out[-800:])
+            ck("...and 0i exit 2 reads as NOT CHECKED, not as a pass",
+               "NOT CHECKED" in out and "This is not a pass" in out, out[-800:])
+        finally:
+            stub.write_bytes(keep)
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

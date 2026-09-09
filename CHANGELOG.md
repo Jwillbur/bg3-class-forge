@@ -10,6 +10,47 @@ landed upstream**, which is why a release here can be days newer than the last c
 
 ---
 
+## 2026-09-08 (e)
+
+**`context_audit.py` (new), gate `[0i/6]` - is this function used in THIS place?**
+
+Every other gate here asks whether a NAME EXISTS. On 2026-09-08 that stopped being
+the useful question: five bugs shipped in one day and **every one was a real,
+attested identifier put somewhere the game never puts it.** They parse, they
+validate, and they do nothing.
+
+| Bug | Uses elsewhere | Uses where it was put |
+|---|---|---|
+| `HasPassive` in a spell's `RequirementConditions` | 171 | **0** |
+| `SourceSpellDC()` in a weapon-triggered `OnDamage` passive | 377 | **0** |
+| `GetActiveWeapon()` in a `PassiveData` `Boosts` | 24 | **0** |
+
+**Two layers, because those need different depths to separate.**
+
+- **(entry type, field) -> function.** Catches `HasPassive` in
+  `(SpellData, RequirementConditions)`.
+- **(StatsFunctorContext, field) -> function**, passives only. `SourceSpellDC` in
+  `(PassiveData, StatsFunctors)` is 2 - not enough to flag. In context `OnDamage` it is
+  **0**, while `SavingThrow` there is 35. The context is what discriminates, so the
+  context is what gets measured.
+
+Built from **77 (type,field) and 139 (context,field) vocabularies over 664 distinct
+functions.**
+
+⚠ **Zero is only a finding when the pool is big.** A vocabulary under 12 functions, or
+a function with fewer than 20 uses corpus-wide, is reported **NOT CHECKED** - never as
+clean. That is the rule that stopped `class_sweep` inventing findings against released
+Warpblade, applied from the start this time.
+
+⭐ **It found a live bug on its first run** - Oath of Avernus's defining feature, wrong
+for the third time, in a form two previous fixes had missed.
+
+**7 controls in `build_acceptance.py`, mutation-tested.** The injected fault is a
+verbatim replay of the `SourceSpellDC()` bug. Making the gate warn instead of throw
+kills 2 controls; conflating exit 2 with exit 1 kills 1 more.
+
+---
+
 ## 2026-09-08 (d)
 
 **`shapeshift_audit.py` checked that a POLYMORPHED status HAS a TemplateID and never

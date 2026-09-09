@@ -382,6 +382,30 @@ if (-not $SkipValidate) {
         Write-Host "  class_sweep.py not found beside build.ps1 - NOT CHECKED" -ForegroundColor Yellow
     }
 
+    # Every other gate asks whether a NAME EXISTS. This one asks whether the function is
+    # used in THIS place in the shipped game, which is the only question that mattered on
+    # 2026-09-08 - five bugs that day were all real identifiers in the wrong context:
+    #   HasPassive in a spell's RequirementConditions   - zero shipped uses, inert.
+    #   SourceSpellDC() in a weapon-triggered OnDamage  - no source spell, save auto-failed.
+    #   GetActiveWeapon() in a PassiveData Boosts       - zero shipped uses. That one was
+    #     the subclass's DEFINING feature, wrong for the third time, and this gate is what
+    #     found it.
+    Write-Host "[0i/6] Checking function contexts..." -ForegroundColor Yellow
+    $ca = Join-Path $PSScriptRoot "context_audit.py"
+    if (Test-Path $ca) {
+        & py $ca $Workspace
+        # 1 and 2 are DIFFERENT ANSWERS - the split that broke gate 0f on its first run.
+        if ($LASTEXITCODE -eq 1) {
+            throw "context_audit failed - see above. A real function in the wrong field or context parses fine and then does nothing in game."
+        } elseif ($LASTEXITCODE -ne 0) {
+            Write-Host "  NOT CHECKED - function contexts were not verified (exit $LASTEXITCODE). This is not a pass." -ForegroundColor Yellow
+        } else {
+            Write-Host "  ok" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "  context_audit.py not found beside build.ps1 - NOT CHECKED" -ForegroundColor Yellow
+    }
+
     # sim.py runs the the mod's own functors against a scripted fight - a plain attack, a
     # status landing on the player, three hits into a detonation. Every Spatial Debt
     # regression so far cost a game launch to find, and three of them were visible in
