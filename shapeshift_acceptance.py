@@ -131,7 +131,14 @@ check("...but does not block the build", rc, 0)
 root = sandbox()
 p = status(root)
 t = p.read_text(encoding="utf8")
-t = re.sub(r'^data "TemplateID" "45df7c10[^"]*"\n', "", t, flags=re.M)
+# GUID-agnostic on purpose. This was pinned to "45df7c10..." and silently stripped
+# NOTHING the day the mod repointed its TemplateID at its own RootTemplates, so the
+# control ran against a fixture that still HAD one and reported the gate broken when
+# the gate was fine. A fixture that stops injecting its fault is worse than no
+# control: it accuses working code.
+t2 = re.sub(r'^data "TemplateID" "[^"]*"\n', "", t, flags=re.M)
+assert t2 != t, "fixture injected nothing - there was no TemplateID line to strip"
+t = t2
 p.write_text(t, encoding="utf8")
 rc, out = run(root)
 check("a POLYMORPHED status with no TemplateID FAILS", rc, 1)
