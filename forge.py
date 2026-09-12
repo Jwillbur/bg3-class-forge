@@ -436,7 +436,7 @@ LEVELMAP = """<?xml version="1.0" encoding="utf-8"?>
 
                      Add a <node id="LevelMapValue"> per breakpoint. FallbackValue is
                      what applies below the lowest level named. -->
-                <node id="LevelMap">
+                <node id="LevelMapSeries">
                     <attribute id="FallbackValue" type="LSString"  value="1d8"/>
                     <attribute id="Level{{FIRST_LEVEL}}" type="LSString" value="1d8"/>
                     <attribute id="Name"          type="FixedString" value="{{LEVELMAP_ID}}"/>

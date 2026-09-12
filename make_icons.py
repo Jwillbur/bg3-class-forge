@@ -66,7 +66,20 @@ CFG = modconfig.load(Path.cwd())
 
 # ------------------------------------------------------------------ config --
 HERE = Path(__file__).resolve().parent
-MODROOT = HERE.parent
+# ⛔ MODROOT WAS `HERE.parent`, WHICH IS THE TOOLKIT ROOT, NOT THE MOD.
+# This script lives in forge/, so HERE.parent is always C:/Modding/Toolkit no matter
+# which mod is being built. Every source-art and output path below hung off it, so
+# running it from a second mod looked for that mod's artwork in the Toolkit root and
+# reported "source art missing" with a path the user never chose.
+#
+# The comment above records the 2026-09-06 half of this same bug: the paths were the
+# literal string "Warpblade" and were changed to CFG.name. The NAME was fixed and the
+# ROOT was left hardcoded, so the tool still only worked for one mod.
+#
+# CFG.root is the directory containing forge.json - the same answer every other forge
+# tool uses. Found 2026-09-11 building the second mod in this repo; same bug class as
+# memory_audit.py's single-mod version check, fixed the same day.
+MODROOT = CFG.root
 GUI = MODROOT / "Mods" / CFG.name / "GUI"
 OBJ = MODROOT / "obj" / "icons"
 
@@ -107,6 +120,17 @@ DIVINE = Path(r"C:\Modding\tools\lslib\Packed\Tools\Divine.exe")
 CLASS_SRC = MODROOT / "art" / "class icon.png"
 HOTBAR_SRC = MODROOT / "art" / "hotbar icon.png"
 RES_SRC = MODROOT / "art" / "resource.png"
+
+# ⛔ NOT EVERY CLASS HAS A SPENDABLE RESOURCE, and this script used to require one.
+# It demanded art/resource.png unconditionally and exited before drawing anything, so a
+# subclass whose design forbids new resources could not generate its CLASS icon either.
+# Found 2026-09-11 on The Uncrowned God, whose bible bans new resources outright: the
+# corpse it consumes is the resource.
+#
+# The test is the ARTIFACT, not the config. A forge.json can still carry a leftover
+# resource_name from scaffolding; what decides whether the game has a resource is
+# whether the mod actually ships an ActionResourceDefinitions directory.
+HAS_RESOURCE = (MODROOT / "Public" / CFG.name / "ActionResourceDefinitions").is_dir()
 
 CLASS_NAME = CFG.name
 RES_NAME = "WarpDie"
@@ -649,7 +673,8 @@ def main():
     for t in (TEXCONV, DIVINE):
         if not t.exists():
             raise SystemExit(f"required tool missing: {t}")
-    for s in (CLASS_SRC, HOTBAR_SRC, RES_SRC):
+    required = [CLASS_SRC, HOTBAR_SRC] + ([RES_SRC] if HAS_RESOURCE else [])
+    for s in required:
         if not s.exists():
             raise SystemExit(f"source art missing: {s}")
 
@@ -697,30 +722,33 @@ def main():
         how = f"circle r={circle}" if circle else f"content {hf:.0%}h, y{yo:+.1%}"
         print(f"  {rel:<34} {cw}x{ch}  <- {src} master, {how}")
 
-    # ------------------------------------------------------- resource icon --
-    print("resource icon:")
-    res = trim_square(load_source(RES_SRC, "warp die"))
-    res = punch(res, contrast=1.18, saturation=1.15)
-    save_png(res, OBJ / "resource_master.png")
-    print(f"  master {res.width}x{res.height}")
+    if not HAS_RESOURCE:
+        print("resource icon: SKIPPED - this mod ships no ActionResourceDefinitions")
+    else:
+        # ------------------------------------------------------- resource icon --
+        print("resource icon:")
+        res = trim_square(load_source(RES_SRC, "warp die"))
+        res = punch(res, contrast=1.18, saturation=1.15)
+        save_png(res, OBJ / "resource_master.png")
+        print(f"  master {res.width}x{res.height}")
 
-    for rel, cw, ch, hf, mw, has_states, register in RES_TARGETS:
-        for state in (RES_STATES if has_states else [""]):
-            styled = tint_state(res, state)
-            if "icons_resources" in rel:
-                # the level-up slot is a slab with the symbol ON it, not a cutout
-                img = stone_slab(cw)
-                die = place(styled, cw, ch, 0.62, 0.62)
-                img.alpha_composite(die)
-            else:
-                img = place(styled, cw, ch, hf, mw)
-            d = f"{rel}/{state}" if state else rel
-            png = GUI / d / f"{RES_NAME}.png"
-            save_png(img, png)
-            to_dds(png, GUI / d)
-            if register:
-                entries.append((f"{d}/{RES_NAME}.png", cw, ch))
-            print(f"  {d:<52} {cw}x{ch}")
+        for rel, cw, ch, hf, mw, has_states, register in RES_TARGETS:
+            for state in (RES_STATES if has_states else [""]):
+                styled = tint_state(res, state)
+                if "icons_resources" in rel:
+                    # the level-up slot is a slab with the symbol ON it, not a cutout
+                    img = stone_slab(cw)
+                    die = place(styled, cw, ch, 0.62, 0.62)
+                    img.alpha_composite(die)
+                else:
+                    img = place(styled, cw, ch, hf, mw)
+                d = f"{rel}/{state}" if state else rel
+                png = GUI / d / f"{RES_NAME}.png"
+                save_png(img, png)
+                to_dds(png, GUI / d)
+                if register:
+                    entries.append((f"{d}/{RES_NAME}.png", cw, ch))
+                print(f"  {d:<52} {cw}x{ch}")
 
     # ---------------------------------------------------------- metadata --
     print("writing GUI/metadata.lsf ...")
